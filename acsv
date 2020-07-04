@@ -46,9 +46,9 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.52"
-echo "Last edited 5 Nov 2012"
-echo "(c)2011-2012 Swensoft Corporation"
+echo "Advanced Checksum Verifier v1.53"
+echo "Last edited 7 May 2013"
+echo "(c)2011-2013 Swensoft Corporation"
 echo ""
 exit 0
 else
@@ -157,10 +157,14 @@ do
       #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
+                  echo -ne "${RED}"
                   $HASH "$f">>"$out"
+                  echo -ne "${WHITE}"
                else
                   cd "${here}"
+                  echo -ne "${RED}"
                   $HASH "${dd}/$f">>"${cfile}"
+                  echo -ne "${WHITE}"
                fi
             fi
          done
@@ -230,10 +234,14 @@ do
             #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
+                  echo -ne "${RED}"
                   $HASH "$f">>~/.$outa.tmp
+                  echo -ne "${WHITE}"
                else
                   cd "${here}"
+                  echo -ne "${RED}"
                   $HASH "${dd}/$f">>"${cfile}.tmp"
+                  echo -ne "${WHITE}"
                fi
             fi
          done
@@ -275,7 +283,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.52"
+echo "Swensoft ACSV Checksum Verifier v1.53"
 echo "(c)2011-2012 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
