@@ -58,9 +58,9 @@ elif [ "$args" == "-ed2k" ] ; then
 HASH=--ed2k
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.60"
-echo "Last edited 25 June 2014"
-echo "(c)2011-2014 Swensoft Corporation"
+echo "Advanced Checksum Verifier v1.61"
+echo "Last edited 25 February 2017"
+echo "(c)2011-2017 Swensoft Corporation"
 echo ""
 exit 0
 else
@@ -278,10 +278,10 @@ do
          done
          if [ "$ONEFILE" == "NO" ] ; then
             if [ -f ~/.${outa}.${UNIQUE}.tmp ] && [ -f "$out" ] ; then
-               g=$(diff -u "$out" ~/.${outa}.${UNIQUE}.tmp)
+               g=$(diff -u -- "$out" ~/.${outa}.${UNIQUE}.tmp)
             fi
             if [ ! -e "$out" ]; then
-               mv -f ~/.${outa}.${UNIQUE}.tmp "$out"
+               mv -f -- ~/.${outa}.${UNIQUE}.tmp "$out"
             elif [ "$g" != "" ]; then
                echo -e "${RED}$g${WHITE}"
                if [ "$MODE" == "COMPUP" ] ; then
@@ -289,7 +289,7 @@ do
                   echo -e -n "${RED}Update this checksum file? (y/n)=${WHITE}"
                   read dummy
                   if [ "$dummy" == "y" ] ; then
-                     mv -vf ~/.${outa}.${UNIQUE}.tmp "$out"
+                     mv -vf -- ~/.${outa}.${UNIQUE}.tmp "$out"
                   fi 
                fi
             fi
@@ -302,7 +302,7 @@ do
    fi
 done
 if [ "$ONEFILE" == "YES" ] ; then
-   g=$(diff -u "${cfile}" "${cfile}.tmp")
+   g=$(diff -u -- "${cfile}" "${cfile}.tmp")
    if [ "$g" != "" ]; then
       echo -e "${RED}$g${WHITE}"
    fi
@@ -316,8 +316,8 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.60"
-echo "(c)2011-2014 Swensoft Corporation"
+echo "Swensoft ACSV Checksum Verifier v1.61"
+echo "(c)2011-2017 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] [-symlinks] -(md5|sha1|sha256) [directory] [-V] [-h]"
 echo
