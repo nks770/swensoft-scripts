@@ -11,7 +11,7 @@ OVERWRITE=ASK
 ONEFILE=NO
 UNIQUE=$$
 
-SYML='^-'
+SYML=naGh
 
 for args in $@ ; do
 
@@ -28,7 +28,7 @@ elif [ "$args" == "-h" ] || [ "$args" == "/?" ] || [ "$args" == "-help" ] ; then
 MODE=USAGE
 #fi
 elif [ "$args" == "-symlinks" ] ; then
-SYML='(^-|^l)'
+SYML=naGhL
 #fi
 elif [ "$args" == "-overwrite" ] ; then
 OVERWRITE=YES
@@ -58,8 +58,8 @@ elif [ "$args" == "-ed2k" ] ; then
 HASH=--ed2k
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.58"
-echo "Last edited 21 February 2014"
+echo "Advanced Checksum Verifier v1.59"
+echo "Last edited 4 March 2014"
 echo "(c)2011-2014 Swensoft Corporation"
 echo ""
 exit 0
@@ -164,7 +164,7 @@ do
    outee=$out.$oute
    out=$out.$outa
    cd "${here}${dd}"
-   if [ "$(ls -la|egrep ${SYML}|wc -l)" != "0" ]; then
+   if [ "$(ls -${SYML}|grep ^-|wc -l)" != "0" ]; then
       echo Directory ${here}${dd} updating...
       dummy=y
       # Prompt the user to overwrite the .md5 file if it already exists.
@@ -184,11 +184,8 @@ do
             rm -f "$out"
          fi
       # Make the checksum file:
-      # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
-      # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
-         for f in $(ls -naGh|egrep ${SYML}|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; g=index(f,">"); if(g != 0) { f = substr(f,0,g-3); } print f ; }')
+         for f in $(ls -${SYML}|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
          do
-      #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] && [ "$f" != "$outdd" ] && [ "$f" != "$outee" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
@@ -253,7 +250,7 @@ do
    outee=$out.$oute
    out=$out.$outa
    cd "${here}${dd}"                               # Go to the current directory.
-   if [ "$(ls -la|egrep ${SYML}|wc -l)" != "0" ]; then # Only continue if there are files here.
+   if [ "$(ls -${SYML}|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
       if [ "$MODE" == "COMPUP" ] || [ "$ONEFILE" == "YES" ] || [ -e "$out" ]; then  # Continue if a checksum file exists or if in ONEFILE or COMPUP modes.
          if [ -e "$out" ] ; then
             echo Directory ${here}${dd} verifying...
@@ -264,11 +261,8 @@ do
             rm -f ~/.${outa}.${UNIQUE}.tmp
          fi
          touch ~/.$outa.${UNIQUE}.tmp
-         # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
-         # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
-         for f in $(ls -naGh|egrep ${SYML}|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; g=index(f,">"); if(g != 0) { f = substr(f,0,g-3); } print f ; }')
+         for f in $(ls -${SYML}|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
          do
-            #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] && [ "$f" != "$outdd" ] && [ "$f" != "$outee" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
@@ -322,7 +316,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.58"
+echo "Swensoft ACSV Checksum Verifier v1.59"
 echo "(c)2011-2014 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
