@@ -33,7 +33,7 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.10"
+echo "Advanced Checksum Verifier v1.20"
 echo "Last edited 09 Sep 2011"
 echo "(c)2011 Swensoft Corporation"
 echo ""
@@ -65,6 +65,16 @@ outb=md5
 fi
 
 
+# Figure out where the script is running from, so we can get absolute paths.
+here=`pwd`'/'
+# Burn off the "/" at the end of the input, if it is there.
+sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
+# If the user gave an absolute path, then this correction isn't necessary.
+if [ "$(echo ${TARGET}|awk '{ print substr( $0, 0, 1 ) ; }')" == "/" ] ; then
+here=''
+fi
+
+
 # Create checksum files.
 if [ "$MODE" == "UPDATE" ]; then
 
@@ -72,17 +82,14 @@ if [ "$OVERWRITE" == "YES" ]; then
 echo -e "${RED}All existing checksums will be overwritten.${WHITE}"
 fi
 
-here=`pwd`
-sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
-
 for dd in $(find "$sdir" -type d)
 do
 out=$(echo "$dd"|awk -F/ '{ print $NF }')
 outbb=$out.$outb
 out=$out.$outa
-cd "$here/$dd"
+cd "${here}${dd}"
 if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then
-echo Directory $here/$dd updating...
+echo Directory ${here}${dd} updating...
 dummy=y
 # Prompt the user to overwrite the .md5 file if it already exists.
 if [ -e "$out" ] ; then
@@ -114,7 +121,7 @@ else
 echo -e "${GREEN}Checksum file $out already exists... skipping.${WHITE}"
 fi
 else
-echo -e "${GREEN}Directory $here/$dd is empty.${WHITE}"
+echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
 fi
 done
 
@@ -123,11 +130,6 @@ done
 # Checksum file verification.
 elif [ "$MODE" == "VERIFY" ]; then
 
-# Figure out where the script is running from, so we can get absolute paths.
-here=`pwd`
-# Burn off the "/" at the end of the input, if it is there.
-sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
-
 # Loop through all the subdirectories.
 for dd in $(find "$sdir" -type d)
 do
@@ -135,10 +137,10 @@ do
 out=$(echo "$dd"|awk -F/ '{ print $NF }')
 outbb=$out.$outb
 out=$out.$outa
-cd "$here/$dd"                               # Go to the current directory.
+cd "${here}${dd}"                               # Go to the current directory.
 if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
 if [ -e "$out" ]; then                       # Only continue if a checksum file exists.
-echo Directory $here/$dd verifying...
+echo Directory ${here}${dd} verifying...
 if [ -e ~/.$outa.tmp ]; then
 rm -r -f ~/.$outa.tmp
 fi
@@ -156,10 +158,10 @@ if [ "$g" != "" ]; then
 echo -e "${RED}$g${WHITE}"
 fi
 else
-echo -e "${RED}Directory $here/$dd has no checksum file!${WHITE}"
+echo -e "${RED}Directory ${here}${dd} has no checksum file!${WHITE}"
 fi
 else
-echo -e "${GREEN}Directory $here/$dd is empty.${WHITE}"
+echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
 fi
 done
 if [ -e ~/.$outa.tmp ]; then
