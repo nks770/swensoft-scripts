@@ -9,6 +9,7 @@ HASH=md5sum
 MODE=USAGE
 OVERWRITE=ASK
 ONEFILE=NO
+UNIQUE=$$
 
 for args in $@ ; do
 
@@ -46,8 +47,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.54"
-echo "Last edited 17 May 2013"
+echo "Advanced Checksum Verifier v1.55"
+echo "Last edited 25 October 2013"
 echo "(c)2011-2013 Swensoft Corporation"
 echo ""
 exit 0
@@ -224,10 +225,10 @@ do
          else
             echo Directory ${here}${dd} updating...
          fi
-         if [ "$ONEFILE" == "NO" ] && [ -e ~/.$outa.tmp ]; then
-            rm -f ~/.$outa.tmp
+         if [ "$ONEFILE" == "NO" ] && [ -e ~/.${outa}.${UNIQUE}.tmp ]; then
+            rm -f ~/.${outa}.${UNIQUE}.tmp
          fi
-         touch ~/.$outa.tmp
+         touch ~/.$outa.${UNIQUE}.tmp
          # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
          # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
          for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
@@ -236,7 +237,7 @@ do
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
-                  $HASH "$f">>~/.$outa.tmp
+                  $HASH "$f">>~/.${outa}.${UNIQUE}.tmp
                   echo -ne "${WHITE}"
                else # if ONEFILE="YES"
                   cd "${here}"
@@ -247,11 +248,11 @@ do
             fi
          done
          if [ "$ONEFILE" == "NO" ] ; then
-            if [ -f ~/.$outa.tmp ] && [ -f "$out" ] ; then
-               g=$(diff -u "$out" ~/.$outa.tmp)
+            if [ -f ~/.${outa}.${UNIQUE}.tmp ] && [ -f "$out" ] ; then
+               g=$(diff -u "$out" ~/.${outa}.${UNIQUE}.tmp)
             fi
             if [ ! -e "$out" ]; then
-               mv -f ~/.$outa.tmp "$out"
+               mv -f ~/.${outa}.${UNIQUE}.tmp "$out"
             elif [ "$g" != "" ]; then
                echo -e "${RED}$g${WHITE}"
                if [ "$MODE" == "COMPUP" ] ; then
@@ -259,7 +260,7 @@ do
                   echo -e -n "${RED}Update this checksum file? (y/n)=${WHITE}"
                   read dummy
                   if [ "$dummy" == "y" ] ; then
-                     mv -vf ~/.$outa.tmp "$out"
+                     mv -vf ~/.${outa}.${UNIQUE}.tmp "$out"
                   fi 
                fi
             fi
@@ -278,15 +279,15 @@ if [ "$ONEFILE" == "YES" ] ; then
    fi
 fi
 
-if [ -e ~/.$outa.tmp ]; then
-   rm -f ~/.$outa.tmp
+if [ -e ~/.${outa}.${UNIQUE}.tmp ]; then
+   rm -f ~/.${outa}.${UNIQUE}.tmp
 fi
 if [ -e "${cfile}.tmp" ]; then
    rm -f "${cfile}.tmp"
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.54"
+echo "Swensoft ACSV Checksum Verifier v1.55"
 echo "(c)2011-2013 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
