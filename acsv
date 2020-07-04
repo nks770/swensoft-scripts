@@ -8,6 +8,7 @@ IFS=$'\n'
 HASH=md5sum
 MODE=USAGE
 OVERWRITE=ASK
+ONEFILE=NO
 
 for args in $@ ; do
 
@@ -22,6 +23,9 @@ MODE=USAGE
 #fi
 elif [ "$args" == "-overwrite" ] ; then
 OVERWRITE=YES
+#fi
+elif [ "$args" == "-l" ] ; then
+ONEFILE=YES
 #fi
 elif [ "$args" == "-skip" ] ; then
 OVERWRITE=NO
@@ -39,8 +43,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.30"
-echo "Last edited 27 Feb 2012"
+echo "Advanced Checksum Verifier v1.40"
+echo "Last edited 31 May 2012"
 echo "(c)2011-2012 Swensoft Corporation"
 echo ""
 exit 0
@@ -79,6 +83,7 @@ fi
 
 # Figure out where the script is running from, so we can get absolute paths.
 here=`pwd`'/'
+cfile=${here}${outa}sum.lst
 # Burn off the "/" at the end of the input, if it is there.
 sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
 # If the user gave an absolute path, then this correction isn't necessary.
@@ -94,48 +99,74 @@ if [ "$OVERWRITE" == "YES" ]; then
 echo -e "${RED}All existing checksums will be overwritten.${WHITE}"
 fi
 
+if [ "$ONEFILE" == "YES" ] && [ -e "${cfile}" ] ; then
+   dummy=N
+   if [ "$OVERWRITE" == "YES" ] ; then
+      dummy=y
+   else
+      echo -n -e "${RED}Checksum file ${cfile} already exists!!! Overwrite? (y/n)=${WHITE}"
+      read dummy
+   fi
+   if [ "$dummy" == "y" ]; then
+      rm -f "${cfile}"
+      if [ -e "${cfile}" ] ; then
+         echo -e "${RED}Could not delete ${cfile}!${WHITE}"
+         exit 4
+      fi
+      touch "${cfile}"
+   else
+         echo -e "${RED}Please move or delete ${cfile} then try again.${WHITE}"
+         exit 4
+   fi
+fi
+
 for dd in $(find "$sdir" -type d)
 do
-out=$(echo "$dd"|awk -F/ '{ print $NF }')
-outbb=$out.$outb
-outcc=$out.$outc
-out=$out.$outa
-cd "${here}${dd}"
-if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then
-echo Directory ${here}${dd} updating...
-dummy=y
-# Prompt the user to overwrite the .md5 file if it already exists.
-if [ -e "$out" ] ; then
-if [ "$OVERWRITE" == "ASK" ]; then
-echo -n -e "${RED}Checksum file $out already exists!!! Overwrite? (y/n)=${WHITE}"
-read dummy
-elif [ "$OVERWRITE" == "YES" ]; then
-dummy=y
-else
-dummy=N
-fi
-fi
-# Following the user's advice, delete the .md5 file if it already exists:
-if [ "$dummy" == "y" ]; then
-if [ -e "$out" ]; then
-rm -r -f "$out"
-fi
-# Make the checksum file:
-# for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
-# for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
-for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
-do
-#f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
-if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
-$HASH "$f">>"$out"
-fi
-done
-else
-echo -e "${GREEN}Checksum file $out already exists... skipping.${WHITE}"
-fi
-else
-echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
-fi
+   out=$(echo "$dd"|awk -F/ '{ print $NF }')
+   outbb=$out.$outb
+   outcc=$out.$outc
+   out=$out.$outa
+   cd "${here}${dd}"
+   if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then
+      echo Directory ${here}${dd} updating...
+      dummy=y
+      # Prompt the user to overwrite the .md5 file if it already exists.
+      if [ "$ONEFILE" == "NO" ] && [ -e "$out" ] ; then
+         if [ "$OVERWRITE" == "ASK" ]; then
+            echo -n -e "${RED}Checksum file $out already exists!!! Overwrite? (y/n)=${WHITE}"
+            read dummy
+         elif [ "$OVERWRITE" == "YES" ]; then
+            dummy=y
+         else
+            dummy=N
+         fi
+      fi
+      # Following the user's advice, delete the .md5 file if it already exists:
+      if [ "$dummy" == "y" ]; then
+         if [ "$ONEFILE" == "NO" ] && [ -e "$out" ]; then
+            rm -f "$out"
+         fi
+      # Make the checksum file:
+      # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
+      # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
+         for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
+         do
+      #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
+            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
+               if [ "$ONEFILE" == "NO" ] ; then
+                  $HASH "$f">>"$out"
+               else
+                  cd "${here}"
+                  $HASH "${dd}/$f">>"${cfile}"
+               fi
+            fi
+         done
+      else
+         echo -e "${GREEN}Checksum file ${out} already exists... skipping.${WHITE}"
+      fi
+   else
+      echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
+   fi
 done
 
 
@@ -143,53 +174,93 @@ done
 # Checksum file verification.
 elif [ "$MODE" == "VERIFY" ]; then
 
+if [ "$ONEFILE" == "YES" ] && [ -e "${cfile}.tmp" ] ; then
+   dummy=N
+   if [ "$OVERWRITE" == "YES" ] ; then
+      dummy=y
+   else
+      echo -n -e "${RED}Checksum file ${cfile}.tmp already exists!!! Overwrite? (y/n)=${WHITE}"
+      read dummy
+   fi
+   if [ "$dummy" == "y" ]; then
+      rm -f "${cfile}.tmp"
+      if [ -e "${cfile}.tmp" ] ; then
+         echo -e "${RED}Could not delete ${cfile}.tmp!${WHITE}"
+         exit 4
+      fi
+      touch "${cfile}.tmp"
+   else
+         echo -e "${RED}Please move or delete ${cfile}.tmp then try again.${WHITE}"
+         exit 4
+   fi
+fi
+
+
 # Loop through all the subdirectories.
 for dd in $(find "$sdir" -type d)
 do
 # Find the name of the .md5 file for the current subdirectory.
-out=$(echo "$dd"|awk -F/ '{ print $NF }')
-outbb=$out.$outb
-outcc=$out.$outc
-out=$out.$outa
-cd "${here}${dd}"                               # Go to the current directory.
-if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
-if [ -e "$out" ]; then                       # Only continue if a checksum file exists.
-echo Directory ${here}${dd} verifying...
-if [ -e ~/.$outa.tmp ]; then
-rm -r -f ~/.$outa.tmp
-fi
-# for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
-# for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
-for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
-do
-#f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
-if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
-$HASH "$f">>~/.$outa.tmp
-fi
+   out=$(echo "$dd"|awk -F/ '{ print $NF }')
+   outbb=$out.$outb
+   outcc=$out.$outc
+   out=$out.$outa
+   cd "${here}${dd}"                               # Go to the current directory.
+   if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
+      if [ "$ONEFILE" == "YES" ] || [ -e "$out" ]; then  # Continue if a checksum file exists or if in ONEFILE mode.
+         echo Directory ${here}${dd} verifying...
+         if [ "$ONEFILE" == "NO" ] && [ -e ~/.$outa.tmp ]; then
+            rm -f ~/.$outa.tmp
+         fi
+         # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
+         # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
+         for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
+         do
+            #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
+            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
+               if [ "$ONEFILE" == "NO" ] ; then
+                  $HASH "$f">>~/.$outa.tmp
+               else
+                  cd "${here}"
+                  $HASH "${dd}/$f">>"${cfile}.tmp"
+               fi
+            fi
+         done
+         if [ "$ONEFILE" == "NO" ] ; then
+            g=$(diff -u "$out" ~/.$outa.tmp)
+            if [ "$g" != "" ]; then
+               echo -e "${RED}$g${WHITE}"
+            fi
+         fi
+      else
+         echo -e "${RED}Directory ${here}${dd} has no checksum file!${WHITE}"
+      fi
+   else
+      echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
+   fi
 done
-g=$(diff -u "$out" ~/.$outa.tmp)
-if [ "$g" != "" ]; then
-echo -e "${RED}$g${WHITE}"
+if [ "$ONEFILE" == "YES" ] ; then
+   g=$(diff -u "${cfile}" "${cfile}.tmp")
+   if [ "$g" != "" ]; then
+      echo -e "${RED}$g${WHITE}"
+   fi
 fi
-else
-echo -e "${RED}Directory ${here}${dd} has no checksum file!${WHITE}"
-fi
-else
-echo -e "${GREEN}Directory ${here}${dd} is empty.${WHITE}"
-fi
-done
+
 if [ -e ~/.$outa.tmp ]; then
-rm -r -f ~/.$outa.tmp
+   rm -f ~/.$outa.tmp
+fi
+if [ -e "${cfile}.tmp" ]; then
+   rm -f "${cfile}.tmp"
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.30"
+echo "Swensoft ACSV Checksum Verifier v1.40"
 echo "(c)2011-2012 Swensoft Corporation"
 echo
-echo "Usage: acsv -(u|v) [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
+echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
 echo
 echo "    u || -u || -update   Update checksum files in directory."
 echo "    v || -v || -verify   Verify checksum files in directory."
+echo "    -l                   Write one checksum file in the current directory ONLY."
 echo "    -overwrite           In update mode, existing checksums will be overwritten"
 echo "                             without prompting."
 echo "    -skip || -quiet      In update mode, directories with existing checksums will"
