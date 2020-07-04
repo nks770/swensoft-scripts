@@ -47,8 +47,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.55"
-echo "Last edited 25 October 2013"
+echo "Advanced Checksum Verifier v1.56"
+echo "Last edited 9 November 2013"
 echo "(c)2011-2013 Swensoft Corporation"
 echo ""
 exit 0
@@ -70,15 +70,15 @@ fi
 fi
 
 # Set up checksumfile extensions.
-if [ "$HASH" == "md5sum" ]; then
+if [ "${HASH}" == "md5sum" ]; then
 outa=md5
 outb=sha256
 outc=sha1
-elif [ "$HASH" == "sha256sum" ]; then
+elif [ "${HASH}" == "sha256sum" ]; then
 outa=sha256
 outb=md5
 outc=sha1
-elif [ "$HASH" == "sha1sum" ]; then
+elif [ "${HASH}" == "sha1sum" ]; then
 outa=sha1
 outb=sha256
 outc=md5
@@ -159,12 +159,12 @@ do
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
-                  $HASH "$f">>"$out"
+                  ${HASH} -- "${f}">>"$out"
                   echo -ne "${WHITE}"
                else
                   cd "${here}"
                   echo -ne "${RED}"
-                  $HASH "${dd}/$f">>"${cfile}"
+                  ${HASH} -- "${dd}/${f}">>"${cfile}"
                   echo -ne "${WHITE}"
                fi
             fi
@@ -237,12 +237,12 @@ do
             if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
-                  $HASH "$f">>~/.${outa}.${UNIQUE}.tmp
+                  ${HASH} -- "${f}">>~/.${outa}.${UNIQUE}.tmp
                   echo -ne "${WHITE}"
                else # if ONEFILE="YES"
                   cd "${here}"
                   echo -ne "${RED}"
-                  $HASH "${dd}/$f">>"${cfile}.tmp"
+                  ${HASH} -- "${dd}/${f}">>"${cfile}.tmp"
                   echo -ne "${WHITE}"
                fi
             fi
@@ -287,7 +287,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.55"
+echo "Swensoft ACSV Checksum Verifier v1.56"
 echo "(c)2011-2013 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
