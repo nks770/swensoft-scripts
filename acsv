@@ -18,6 +18,9 @@ MODE=UPDATE
 elif [ "$args" == "-v" ] || [ "$args" == "v" ] || [ "$args" == "-verify" ] ; then
 MODE=VERIFY
 #fi
+elif [ "$args" == "-c" ] || [ "$args" == "c" ] || [ "$args" == "-compup" ] ; then
+MODE=COMPUP
+#fi
 elif [ "$args" == "-h" ] || [ "$args" == "/?" ] || [ "$args" == "-help" ] ; then
 MODE=USAGE
 #fi
@@ -43,8 +46,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.41"
-echo "Last edited 1 June 2012"
+echo "Advanced Checksum Verifier v1.50"
+echo "Last edited 5 Nov 2012"
 echo "(c)2011-2012 Swensoft Corporation"
 echo ""
 exit 0
@@ -172,7 +175,12 @@ done
 
 
 # Checksum file verification.
-elif [ "$MODE" == "VERIFY" ]; then
+elif [ "$MODE" == "VERIFY" ] || [ "$MODE" == "COMPUP" ] ; then
+
+if [ "$MODE" == "COMPUP" ] && [ "$ONEFILE" == "YES" ] ; then
+   echo -e "${RED}WARNING: ONEFILE mode is not supported in COMPUP mode.  Switched off.${WHITE}"
+   ONEFILE=NO
+fi
 
 if [ "$ONEFILE" == "YES" ] && [ -e "${cfile}.tmp" ] ; then
    dummy=N
@@ -206,8 +214,12 @@ do
    out=$out.$outa
    cd "${here}${dd}"                               # Go to the current directory.
    if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
-      if [ "$ONEFILE" == "YES" ] || [ -e "$out" ]; then  # Continue if a checksum file exists or if in ONEFILE mode.
-         echo Directory ${here}${dd} verifying...
+      if [ "$MODE" == "COMPUP" ] || [ "$ONEFILE" == "YES" ] || [ -e "$out" ]; then  # Continue if a checksum file exists or if in ONEFILE or COMPUP modes.
+         if [ -e "$out" ] ; then
+            echo Directory ${here}${dd} verifying...
+         else
+            echo Directory ${here}${dd} updating...
+         fi
          if [ "$ONEFILE" == "NO" ] && [ -e ~/.$outa.tmp ]; then
             rm -f ~/.$outa.tmp
          fi
@@ -227,8 +239,18 @@ do
          done
          if [ "$ONEFILE" == "NO" ] ; then
             g=$(diff -u "$out" ~/.$outa.tmp)
-            if [ "$g" != "" ]; then
+            if [ ! -e "$out" ]; then
+               mv -vf ~/.$outa.tmp "$out"
+            elif [ "$g" != "" ]; then
                echo -e "${RED}$g${WHITE}"
+               if [ "$MODE" == "COMPUP" ] ; then
+                  dummy=N
+                  echo -e "${RED}Update this checksum file? (y/n)=${WHITE}"
+                  read dummy
+                  if [ "$dummy" == "y" ] ; then
+                     mv -vf ~/.$outa.tmp "$out"
+                  fi 
+               fi
             fi
          fi
       else
@@ -253,13 +275,14 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.41"
+echo "Swensoft ACSV Checksum Verifier v1.50"
 echo "(c)2011-2012 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
 echo
 echo "    u || -u || -update   Update checksum files in directory."
 echo "    v || -v || -verify   Verify checksum files in directory."
+echo "    c || -c || -compup   Verify checksums, update those that are different."
 echo "    -l                   Write one checksum file in the current directory ONLY."
 echo "    -overwrite           In update mode, existing checksums will be overwritten"
 echo "                             without prompting."
