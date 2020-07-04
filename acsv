@@ -46,8 +46,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.53"
-echo "Last edited 7 May 2013"
+echo "Advanced Checksum Verifier v1.54"
+echo "Last edited 17 May 2013"
 echo "(c)2011-2013 Swensoft Corporation"
 echo ""
 exit 0
@@ -227,6 +227,7 @@ do
          if [ "$ONEFILE" == "NO" ] && [ -e ~/.$outa.tmp ]; then
             rm -f ~/.$outa.tmp
          fi
+         touch ~/.$outa.tmp
          # for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
          # for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
          for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
@@ -237,7 +238,7 @@ do
                   echo -ne "${RED}"
                   $HASH "$f">>~/.$outa.tmp
                   echo -ne "${WHITE}"
-               else
+               else # if ONEFILE="YES"
                   cd "${here}"
                   echo -ne "${RED}"
                   $HASH "${dd}/$f">>"${cfile}.tmp"
@@ -246,7 +247,9 @@ do
             fi
          done
          if [ "$ONEFILE" == "NO" ] ; then
-            g=$(diff -u "$out" ~/.$outa.tmp)
+            if [ -f ~/.$outa.tmp ] && [ -f "$out" ] ; then
+               g=$(diff -u "$out" ~/.$outa.tmp)
+            fi
             if [ ! -e "$out" ]; then
                mv -f ~/.$outa.tmp "$out"
             elif [ "$g" != "" ]; then
@@ -283,8 +286,8 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.53"
-echo "(c)2011-2012 Swensoft Corporation"
+echo "Swensoft ACSV Checksum Verifier v1.54"
+echo "(c)2011-2013 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
 echo
