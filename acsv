@@ -1,0 +1,172 @@
+#!/bin/bash
+
+RED='\e[1;31m'
+GREEN='\e[1;32m'
+WHITE='\e[0m'
+
+IFS=$'\n'
+HASH=md5sum
+MODE=NOTHING
+OVERWRITE=ASK
+
+for args in $@ ; do
+
+if [ "$args" == "-u" ] || [ "$args" == "u" ] || [ "$args" == "-update" ] ; then
+MODE=UPDATE
+#fi
+elif [ "$args" == "-v" ] || [ "$args" == "v" ] || [ "$args" == "-verify" ] ; then
+MODE=VERIFY
+#fi
+elif [ "$args" == "-overwrite" ] ; then
+OVERWRITE=YES
+#fi
+elif [ "$args" == "-skip" ] ; then
+OVERWRITE=NO
+#fi
+elif [ "$args" == "-quiet" ] ; then
+OVERWRITE=NO
+#fi
+elif [ "$args" == "-md5" ] ; then
+HASH=md5sum
+#fi
+elif [ "$args" == "-sha256" ] ; then
+HASH=sha256sum
+#fi
+elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
+echo "Advanced Checksum Verifier v1.10"
+echo "Last edited 09 Sep 2011"
+echo "(c)2011 Swensoft Corporation"
+echo ""
+exit 0
+else
+TARGET=$args
+fi
+done
+
+
+# Does the specified target directory exist?
+if [ -f $TARGET ] ; then
+echo -e "${RED}ERROR: You must specify a directory.  The script cannot process individual files.${WHITE}"
+exit 4
+fi
+if [ ! -d $TARGET ] ; then
+echo -e "${RED}ERROR: Directory "'"'"$TARGET"'"'" was not found.${WHITE}"
+exit 4
+fi
+
+
+# Set up checksumfile extensions.
+if [ "$HASH" == "md5sum" ]; then
+outa=md5
+outb=sha256
+elif [ "$HASH" == "sha256sum" ]; then
+outa=sha256
+outb=md5
+fi
+
+
+# Create checksum files.
+if [ "$MODE" == "UPDATE" ]; then
+
+if [ "$OVERWRITE" == "YES" ]; then
+echo -e "${RED}All existing checksums will be overwritten.${WHITE}"
+fi
+
+here=`pwd`
+sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
+
+for dd in $(find "$sdir" -type d)
+do
+out=$(echo "$dd"|awk -F/ '{ print $NF }')
+outbb=$out.$outb
+out=$out.$outa
+cd "$here/$dd"
+if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then
+echo Directory $here/$dd updating...
+dummy=y
+# Prompt the user to overwrite the .md5 file if it already exists.
+if [ -e "$out" ] ; then
+if [ "$OVERWRITE" == "ASK" ]; then
+echo -n -e "${RED}Checksum file $out already exists!!! Overwrite? (y/n)=${WHITE}"
+read dummy
+elif [ "$OVERWRITE" == "YES" ]; then
+dummy=y
+else
+dummy=N
+fi
+fi
+# Following the user's advice, delete the .md5 file if it already exists:
+if [ "$dummy" == "y" ]; then
+if [ -e "$out" ]; then
+rm -r -f "$out"
+fi
+# Make the checksum file:
+# for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
+# for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
+for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
+do
+#f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
+if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] ; then
+$HASH "$f">>"$out"
+fi
+done
+else
+echo -e "${GREEN}Checksum file $out already exists... skipping.${WHITE}"
+fi
+else
+echo -e "${GREEN}Directory $here/$dd is empty.${WHITE}"
+fi
+done
+
+
+
+# Checksum file verification.
+elif [ "$MODE" == "VERIFY" ]; then
+
+# Figure out where the script is running from, so we can get absolute paths.
+here=`pwd`
+# Burn off the "/" at the end of the input, if it is there.
+sdir=$(echo "$TARGET"|awk '{ a=length($0); if(substr( $0, a, 1) == "/") a=a-1; print substr( $0, 1, a);}')
+
+# Loop through all the subdirectories.
+for dd in $(find "$sdir" -type d)
+do
+# Find the name of the .md5 file for the current subdirectory.
+out=$(echo "$dd"|awk -F/ '{ print $NF }')
+outbb=$out.$outb
+out=$out.$outa
+cd "$here/$dd"                               # Go to the current directory.
+if [ "$(ls -la|grep ^-|wc -l)" != "0" ]; then # Only continue if there are files here.
+if [ -e "$out" ]; then                       # Only continue if a checksum file exists.
+echo Directory $here/$dd verifying...
+if [ -e ~/.$outa.tmp ]; then
+rm -r -f ~/.$outa.tmp
+fi
+# for f in $(ls -la | grep ^- | awk '{ ORS=" "; for(i = 9; i <= NF; i++) print $i } {ORS="\n"; print ""}')
+# for f in $(ls -la | grep ^- |awk '{a = index($0,":") ; if(a != 0){ print substr($0, a + 4, length($0) - a - 3 ) } }')
+for f in $(ls -naGh|grep ^-|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; print f ; }')
+do
+#f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
+if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] ; then
+$HASH "$f">>~/.$outa.tmp
+fi
+done
+g=$(diff -u "$out" ~/.$outa.tmp)
+if [ "$g" != "" ]; then
+echo -e "${RED}$g${WHITE}"
+fi
+else
+echo -e "${RED}Directory $here/$dd has no checksum file!${WHITE}"
+fi
+else
+echo -e "${GREEN}Directory $here/$dd is empty.${WHITE}"
+fi
+done
+if [ -e ~/.$outa.tmp ]; then
+rm -r -f ~/.$outa.tmp
+fi
+
+else
+echo -e "${RED}Nothing to do.${WHITE}"
+exit 1
+fi
