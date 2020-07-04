@@ -51,9 +51,15 @@ HASH=sha1sum
 elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
+elif [ "$args" == "-aich" ] ; then
+HASH=--aich
+#fi
+elif [ "$args" == "-ed2k" ] ; then
+HASH=--ed2k
+#fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.57"
-echo "Last edited 30 January 2014"
+echo "Advanced Checksum Verifier v1.58"
+echo "Last edited 21 February 2014"
 echo "(c)2011-2014 Swensoft Corporation"
 echo ""
 exit 0
@@ -79,14 +85,34 @@ if [ "${HASH}" == "md5sum" ]; then
 outa=md5
 outb=sha256
 outc=sha1
+outd=aich
+oute=ed2k
 elif [ "${HASH}" == "sha256sum" ]; then
 outa=sha256
 outb=md5
 outc=sha1
+outd=aich
+oute=ed2k
 elif [ "${HASH}" == "sha1sum" ]; then
 outa=sha1
 outb=sha256
 outc=md5
+outd=aich
+oute=ed2k
+elif [ "${HASH}" == "--aich" ]; then
+HASH2=rhash
+outa=aich
+outb=sha256
+outc=sha1
+outd=md5
+oute=ed2k
+elif [ "${HASH}" == "--ed2k" ]; then
+HASH2=rhash
+outa=ed2k
+outb=aich
+outc=sha1
+outd=md5
+oute=sha256
 fi
 
 
@@ -134,6 +160,8 @@ do
    out=$(echo "$dd"|awk -F/ '{ print $NF }')
    outbb=$out.$outb
    outcc=$out.$outc
+   outdd=$out.$outd
+   outee=$out.$oute
    out=$out.$outa
    cd "${here}${dd}"
    if [ "$(ls -la|egrep ${SYML}|wc -l)" != "0" ]; then
@@ -161,15 +189,15 @@ do
          for f in $(ls -naGh|egrep ${SYML}|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; g=index(f,">"); if(g != 0) { f = substr(f,0,g-3); } print f ; }')
          do
       #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
-            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
+            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] && [ "$f" != "$outdd" ] && [ "$f" != "$outee" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
-                  ${HASH} -- "${f}">>"$out"
+                  ${HASH2} ${HASH} -- "${f}">>"$out"
                   echo -ne "${WHITE}"
                else
                   cd "${here}"
                   echo -ne "${RED}"
-                  ${HASH} -- "${dd}/${f}">>"${cfile}"
+                  ${HASH2} ${HASH} -- "${dd}/${f}">>"${cfile}"
                   echo -ne "${WHITE}"
                fi
             fi
@@ -221,6 +249,8 @@ do
    out=$(echo "$dd"|awk -F/ '{ print $NF }')
    outbb=$out.$outb
    outcc=$out.$outc
+   outdd=$out.$outd
+   outee=$out.$oute
    out=$out.$outa
    cd "${here}${dd}"                               # Go to the current directory.
    if [ "$(ls -la|egrep ${SYML}|wc -l)" != "0" ]; then # Only continue if there are files here.
@@ -239,15 +269,15 @@ do
          for f in $(ls -naGh|egrep ${SYML}|awk '{ a = index($0,$5) ; b = substr($0,a,length($0)-a+1) ; c = index(b,$7) ; d = substr(b,c,length(b)-c+1) ; e = index(d," ") ; f = substr(d,e+1,length(d)-e) ; g=index(f,">"); if(g != 0) { f = substr(f,0,g-3); } print f ; }')
          do
             #f=$(echo "$f"|awk '{ print substr( $0, 1, length($0)-1) }')  # Need to burn off a troublesome space at the end. (?)
-            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] ; then
+            if [ "$f" != "$out" ] && [ "$f" != "$outbb" ] && [ "$f" != "$outcc" ] && [ "$f" != "$outdd" ] && [ "$f" != "$outee" ] ; then
                if [ "$ONEFILE" == "NO" ] ; then
                   echo -ne "${RED}"
-                  ${HASH} -- "${f}">>~/.${outa}.${UNIQUE}.tmp
+                  ${HASH2} ${HASH} -- "${f}">>~/.${outa}.${UNIQUE}.tmp
                   echo -ne "${WHITE}"
                else # if ONEFILE="YES"
                   cd "${here}"
                   echo -ne "${RED}"
-                  ${HASH} -- "${dd}/${f}">>"${cfile}.tmp"
+                  ${HASH2} ${HASH} -- "${dd}/${f}">>"${cfile}.tmp"
                   echo -ne "${WHITE}"
                fi
             fi
@@ -292,7 +322,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.57"
+echo "Swensoft ACSV Checksum Verifier v1.58"
 echo "(c)2011-2014 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
