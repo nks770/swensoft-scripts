@@ -58,8 +58,8 @@ elif [ "$args" == "-ed2k" ] ; then
 HASH=--ed2k
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.59"
-echo "Last edited 4 March 2014"
+echo "Advanced Checksum Verifier v1.60"
+echo "Last edited 25 June 2014"
 echo "(c)2011-2014 Swensoft Corporation"
 echo ""
 exit 0
@@ -316,10 +316,10 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.59"
+echo "Swensoft ACSV Checksum Verifier v1.60"
 echo "(c)2011-2014 Swensoft Corporation"
 echo
-echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
+echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] [-symlinks] -(md5|sha1|sha256) [directory] [-V] [-h]"
 echo
 echo "    u || -u || -update   Update checksum files in directory."
 echo "    v || -v || -verify   Verify checksum files in directory."
@@ -329,6 +329,7 @@ echo "    -overwrite           In update mode, existing checksums will be overwr
 echo "                             without prompting."
 echo "    -skip || -quiet      In update mode, directories with existing checksums will"
 echo "                             be skipped without prompting."
+echo "    -symlinks            Dereference symlinks, and include them in the checksums."
 echo "    -md5                 Specifies that the software will use the md5 hash algorithm."
 echo "    -sha1                Specifies that the software will use the sha1 hash algorithm."
 echo "    -sha256              Specifies that the software will use the sha256 hash algorithm."
