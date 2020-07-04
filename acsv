@@ -46,7 +46,7 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.51"
+echo "Advanced Checksum Verifier v1.52"
 echo "Last edited 5 Nov 2012"
 echo "(c)2011-2012 Swensoft Corporation"
 echo ""
@@ -240,7 +240,7 @@ do
          if [ "$ONEFILE" == "NO" ] ; then
             g=$(diff -u "$out" ~/.$outa.tmp)
             if [ ! -e "$out" ]; then
-               mv -vf ~/.$outa.tmp "$out"
+               mv -f ~/.$outa.tmp "$out"
             elif [ "$g" != "" ]; then
                echo -e "${RED}$g${WHITE}"
                if [ "$MODE" == "COMPUP" ] ; then
@@ -275,7 +275,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.51"
+echo "Swensoft ACSV Checksum Verifier v1.52"
 echo "(c)2011-2012 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
