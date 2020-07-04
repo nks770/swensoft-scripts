@@ -43,8 +43,8 @@ elif [ "$args" == "-sha256" ] ; then
 HASH=sha256sum
 #fi
 elif [ "$args" == "-V" ] || [ "$args" == "-version" ] ; then
-echo "Advanced Checksum Verifier v1.40"
-echo "Last edited 31 May 2012"
+echo "Advanced Checksum Verifier v1.41"
+echo "Last edited 1 June 2012"
 echo "(c)2011-2012 Swensoft Corporation"
 echo ""
 exit 0
@@ -120,7 +120,7 @@ if [ "$ONEFILE" == "YES" ] && [ -e "${cfile}" ] ; then
    fi
 fi
 
-for dd in $(find "$sdir" -type d)
+for dd in $(find "$sdir" -type d | sort )
 do
    out=$(echo "$dd"|awk -F/ '{ print $NF }')
    outbb=$out.$outb
@@ -197,7 +197,7 @@ fi
 
 
 # Loop through all the subdirectories.
-for dd in $(find "$sdir" -type d)
+for dd in $(find "$sdir" -type d | sort )
 do
 # Find the name of the .md5 file for the current subdirectory.
    out=$(echo "$dd"|awk -F/ '{ print $NF }')
@@ -253,7 +253,7 @@ if [ -e "${cfile}.tmp" ]; then
 fi
 
 elif [ "$MODE" == "USAGE" ] ; then
-echo "Swensoft ACSV Checksum Verifier v1.40"
+echo "Swensoft ACSV Checksum Verifier v1.41"
 echo "(c)2011-2012 Swensoft Corporation"
 echo
 echo "Usage: acsv -(u|v) [-l] [-overwrite] [-skip] [-quiet] -(md5|sha1|sha256) [directory] [-V] [-h]"
