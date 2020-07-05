@@ -19,43 +19,66 @@ class bcolors:
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Manage cold storage backups.')
-parser.add_argument('source', metavar='source', nargs=1,
+parser.add_argument('command',metavar='command', nargs='?', default='summary',
+                    help='Program function.')
+parser.add_argument('source', metavar='source', nargs='?', default='',
                     help='Source directory to be backed up.')
 args=parser.parse_args()
 
-# Run dirsplit and get the output
-dirsplit=subprocess.run(['dirsplit','-n','-s','300G',args.source[0]],capture_output=True,text=True).stdout.split('\n')
+cmd=args.command
+src=args.source
 
-volumes = []
+# Load metadata file
+dbfile='/'.join([str(Path.home()),'.fcbackup.json'])
+try:
+  with open(dbfile,"r") as in_json:
+    db=json.load(in_json)
+except:
+  print("{}Creating new database file {}...{}".format(bcolors.WARNING,dbfile,bcolors.ENDC))
+  db={'disks':[]}
 
-for f in dirsplit:
-  ff=re.split(r'(\d+): (.+[^\\])=(.+)',f)
-  if len(ff)==5:
-    vol=int(ff[1])
-    cfil = ff[3].replace('\\=','=')
-    if vol > len(volumes):
-      volumes.extend([[]])
-    if Path(cfil).is_file():
-      volumes[vol-1].extend([{'type':'file','path':cfil}])
-    elif Path(cfil).is_dir():
-      volumes[vol-1].extend([{'type':'dir','path':cfil}])
-    else:
-      raise Exception("{}Error indexing {}.{}".format(bcolors.FAIL,cfil,bcolors.ENDC))
+if cmd=='create':
+  print("CREATE MODE")
+  # Run dirsplit and get the output
+  dirsplit=subprocess.run(['dirsplit','-n','-s','300G',src],capture_output=True,text=True).stdout.split('\n')
+  
+  volumes = []
+  
+  for f in dirsplit:
+    ff=re.split(r'(\d+): (.+[^\\])=(.+)',f)
+    if len(ff)==5:
+      vol=int(ff[1])
+      cfil = ff[3].replace('\\=','=')
+      if vol > len(volumes):
+        volumes.extend([[]])
+      if Path(cfil).is_file():
+        volumes[vol-1].extend([{'type':'file','path':cfil}])
+      elif Path(cfil).is_dir():
+        volumes[vol-1].extend([{'type':'dir','path':cfil}])
+      else:
+        raise Exception("{}Error indexing {}.{}".format(bcolors.FAIL,cfil,bcolors.ENDC))
+  
+  
+  volume_info = []
+  
+  for volume in volumes:
+    total_size = 0
+    file_count = 0
+    dir_count = 0
+    directories = []
+    for item in volume:
+      if item['type']=='file':
+        file_count = file_count + 1
+        directories.extend([re.split(r'(.+)/(.*)',item['path'])[1]])
+      elif item['type']=='dir':
+        dir_count = dir_count + 1
+        directories.extend([item[path]])
+      size=Path(item['path']).stat().st_size
+      total_size = total_size + size
+    volume_info.extend([{'file_count':file_count,'dir_count':dir_count,'total_size':total_size,'directories':sorted(set(directories))}])
+  
+  print(json.dumps(volume_info,indent=2))
 
-
-volume_info = []
-
-for volume in volumes:
-  total_size = 0
-  file_count = 0
-  dir_count = 0
-  for item in volume:
-    if item['type']=='file':
-      file_count = file_count + 1
-    elif item['type']=='dir':
-      dir_count = dir_count + 1
-    size=Path(item['path']).stat().st_size
-    total_size = total_size + size
-  volume_info.extend([{'file_count':file_count,'dir_count':dir_count,'total_size':total_size}]) 
-
-print(json.dumps(volume_info,indent=2))
+# Save database
+with open("{}".format(dbfile), "w") as out_json:
+  out_json.writelines(json.dumps(db,indent=2))
