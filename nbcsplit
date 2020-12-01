@@ -1,0 +1,26 @@
+#!/bin/env python3
+
+import argparse
+#import csv
+import json
+import re
+import subprocess
+from pathlib import Path
+
+# Parse arguments
+parser = argparse.ArgumentParser(description='Prepare infofiles for NBC download.')
+parser.add_argument('urlfile',metavar='url_file',nargs=1,default='',
+                    help='File containing the URLs.')
+args=parser.parse_args()
+urls=args.urlfile
+
+with open(urls[0],'r') as f:
+  u = f.read()
+u=u.split()
+
+for url in u:
+  title=re.split(r'^(.+\/)(.+)$',url)[2]
+  print(title)
+  with open('{}.info'.format(title),'w') as infofile:
+    #infofile.write('20\n')
+    infofile.write(url)
