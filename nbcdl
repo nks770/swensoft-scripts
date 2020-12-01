@@ -40,5 +40,13 @@ with urllib.request.urlopen(req) as response:
 
 nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
 jsondata = json.loads(nextdata)
+#initialState = jsondata['props']['initialState']
+#video = jsondata['props']['initialState']['video']
+#current = jsondata['props']['initialState']['video']['current']
+videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
 
-print(json.dumps(jsondata,indent=2))
+#print(json.dumps(jsondata,indent=2))
+
+#print(json.dumps(video,indent=2))
+#print(current.keys())
+print(json.dumps(videoAssets,indent=2))
