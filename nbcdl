@@ -1,127 +1,44 @@
 #!/bin/env python3
 
 import argparse
-#import csv
 import json
 import re
-import subprocess
-from pathlib import Path
+#import subprocess
+#from pathlib import Path
+import urllib.request
+from bs4 import BeautifulSoup
 
 # Parse arguments
-parser = argparse.ArgumentParser(description='Download an NBC video stream.')
-parser.add_argument('infofile',metavar='info_file',nargs=1,default='',
-                    help='File containing the playlist info to download.')
-args=parser.parse_args()
-info=args.infofile
+parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
+parser.add_argument('url',metavar='url',nargs=1,default='',
+                    help='URL of video to download.')
+args = parser.parse_args()
+url = args.url[0]
 
 
-def parse_m3u8(m3ufile):
-  with open('{}'.format(m3ufile),'r') as f:
-    ff=f.read()
-  ff=ff.split('\n')
-  if ff[0] != '#EXTM3U':
-    raise Exception("Unexpected M3U8 format.")
-  m3u8data = []
-  has_streaminfo=False
-  for line in ff:
-    if line[:18] == '#EXT-X-STREAM-INF:':
-      has_streaminfo=True
-      openquote=False
-      lline=list(line)
-      for i in range(len(lline)):
-        if lline[i]=='"':
-          openquote=not openquote
-        if lline[i]==',' and not openquote:
-          lline[i]='|'
-#      stream_info=list(csv.reader([line[18:]],delimiter=',',quoting=csv.QUOTE_ALL))
-      line=''.join(lline)
-      stream_info=line[18:].split('|')
-      streaminfo={}
-      for prop in stream_info:
-        rr=prop.split('=')
-        if rr[0]=='BANDWIDTH' or rr[0]=='AVERAGE-BANDWIDTH':
-          streaminfo.update({rr[0]:int(rr[1])})
-        else:
-          streaminfo.update({rr[0]:rr[1].replace('"','')})
-    elif line!='' and line[0]!='#':
-      if has_streaminfo:
-        m3u8data.extend([{'url':line,'EXT-X-STREAM-INF':streaminfo}])
-        has_streaminfo=False
-      else:
-        m3u8data.extend([{'url':line,}])
-  return m3u8data
+# Verify provided URL
+link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',url)
+type = 'nbcnews'
 
-# OPEN INFO FILE
-with open(info[0],'r') as f:
-  master_urls = f.read()
-master_urls=master_urls.split()
+if len(link)<8:
+  link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',url)
+  type = 'nbc'
 
-title='{}_{}'.format(master_urls[0],re.split(r'^(.+)\/(.+)$',master_urls[1])[2])
-Path(title).mkdir(parents=False, exist_ok=True)
-subprocess.run(['cp','-fv',info[0],'{}/{}.info'.format(title,title)],capture_output=False,check=True)
+clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
 
-srt=''
-# Are there any subtitles?
-for u in master_urls:
-  if len(srt)<2 and '.srt' in u:
-    srt=u
-if srt[:4]=='http':
-  srt_name=re.split(r'^(.+\/)([^\?]+)(.*)$',srt)[2]
-  srt_cmd = ['wget',srt,'-O','{}/{}'.format(title,srt_name)]
-  print(srt_cmd)
-  subprocess.run(srt_cmd,capture_output=False,check=True)
+if len(link)<8:
+  raise Exception("Unhandled URL pattern.")
 
-# GET MASTER PLAYLIST
-master_cmd = ['wget',master_urls[2],'-O','{}/master.m3u8'.format(title)]
-master_url_base = re.split(r'^(.+\/)(.+)$',master_urls[2])[1]
-subprocess.run(master_cmd,capture_output=False,check=True)
 
-master = parse_m3u8('{}/master.m3u8'.format(title))
-master.sort(key=lambda x: x.get('EXT-X-STREAM-INF').get('BANDWIDTH'),reverse=True)
-#print(json.dumps(master,indent=2))
+# Download webpage
+user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+headers = {'User-Agent': user_agent}
+req = urllib.request.Request(clean_url, data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+  webpage = response.read()
+  soup = BeautifulSoup(webpage,features='html.parser')
 
-# GET MEDIA PLAYLIST
-if master[0]['url'][:4]=='http':
-  playlist_name=re.split(r'^(.+\/)([^\?]+)(.*)$',master[0]['url'])[2]
-  playlist_cmd = ['wget',master[0]['url'],'-O','{}/{}'.format(title,playlist_name)]
-else:
-  playlist_name=master[0]['url']
-  playlist_cmd = ['wget','{}{}'.format(master_url_base,master[0]['url']),'-O','{}/{}'.format(title,playlist_name)]
-print(playlist_cmd)
-playlist_url_base = re.split(r'^(.+\/)(.+)$',playlist_cmd[1])[1]
-subprocess.run(playlist_cmd,capture_output=False,check=True)
+nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
+jsondata = json.loads(nextdata)
 
-playlist = parse_m3u8('{}/{}'.format(title,playlist_name))
-#print(json.dumps(playlist,indent=2))
-
-# GET TS FILES
-ts_files = []
-for f in playlist:
-  if f['url'][:4]=='http':
-    ts_name=re.split(r'^(.+\/)([^\?]+)(.*)$',f['url'])[2]
-    ts_files.extend([ts_name])
-    ts_cmd = ['wget',f['url'],'-O','{}/{}'.format(title,ts_name)]
-  else:
-    ts_name=f['url']
-    ts_files.extend([ts_name])
-    ts_cmd = ['wget','{}{}'.format(playlist_url_base,f['url']),'-O','{}/{}'.format(title,ts_name)]
-  subprocess.run(ts_cmd,capture_output=False,check=True)
-
-# Concatenate all the TS files together into one
-with open('{}.ts'.format(title),'wb') as out:
-  for ts in ts_files:
-    with open('{}/{}'.format(title,ts),'rb') as inp:
-      out.write(inp.read())
-ffmpeg_cmd = ['ffmpeg','-i','{}.ts'.format(title),'-acodec','copy','-vcodec','copy','{}.mp4'.format(title)]
-subprocess.run(ffmpeg_cmd,capture_output=False,check=True)
-Path('{}.ts'.format(title)).unlink()
-
-# Archive
-Path('.source').mkdir(parents=False, exist_ok=True)
-archive='.source/{}.tgz'.format(title)
-if Path(archive).is_file():
-  raise Exception('{} already exists.'.format(archive))
-archive_cmd = ['tar','cvfz',archive,title]
-subprocess.run(archive_cmd,capture_output=False,check=True)
-#Path(info[0]).unlink()
-subprocess.run(['rm','-rfv',title])
+print(json.dumps(jsondata,indent=2))
