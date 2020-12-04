@@ -40,13 +40,48 @@ with urllib.request.urlopen(req) as response:
 
 nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
 jsondata = json.loads(nextdata)
-#initialState = jsondata['props']['initialState']
-#video = jsondata['props']['initialState']['video']
-#current = jsondata['props']['initialState']['video']['current']
 videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
+videoAssets.sort(key=lambda x: x['bitrate'],reverse=True)
+videoAsset = videoAssets[0]['publicUrl']
+#print(videoAsset)
 
-#print(json.dumps(jsondata,indent=2))
 
-#print(json.dumps(video,indent=2))
-#print(current.keys())
-print(json.dumps(videoAssets,indent=2))
+
+# Resolve link (MP4)
+user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+headers = {'User-Agent': user_agent}
+req = urllib.request.Request(videoAsset, data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+ vdata1 = response.read()
+ soup1 = BeautifulSoup(vdata1,features='html.parser')
+xdata1 = [x.attrs for x in soup1.find_all('video')]
+xdata1.sort(key=lambda x: x['system-bitrate'],reverse=True)
+ydata1 = xdata1[0]['src']
+zdata1=urllib.request.urlopen(ydata1).geturl()
+print(ydata1)
+print(zdata1)
+#print(json.dumps(xdata1,indent=2))
+
+
+# Resolve link (M3U8)
+user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+headers = {'User-Agent': user_agent}
+req = urllib.request.Request('{}&manifest=m3u'.format(videoAsset), data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+ vdata2 = response.read()
+ soup2 = BeautifulSoup(vdata2,features='html.parser')
+xdata2 = [x.attrs for x in soup2.find_all('video')]
+ydata2 = xdata2[0]['src']
+zdata2=urllib.request.urlopen(ydata2).geturl()
+print(ydata2)
+print(zdata2)
+#print(json.dumps(xdata2,indent=2))
+
+
+user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+headers = {'User-Agent': user_agent}
+req = urllib.request.Request(zdata2, data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+  master_m3u8 = response.read().split()
+
+print(json.dumps([str(x) for x in master_m3u8],indent=2))
