@@ -8,6 +8,44 @@ import re
 import urllib.request
 from bs4 import BeautifulSoup
 
+user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+
+def import_m3u(m3ufile):
+  m3uout = []
+  item = {}
+  for line in m3ufile:
+    p1 = re.split(r'^#(.+):(.+)$',line)
+    p2 = re.split(r'^#(.+):([\d\.]+),*$',line)
+    p3 = re.split(r'^#(.+):(\d+),*$',line)
+    if line in ('#EXTM3U' '#EXT-X-ENDLIST') or line.strip() == "":
+      continue
+    elif len(p3)==4:
+      try:
+        item[p3[1]] = int(p3[2])
+      except:
+        item[p3[1]] = p3[2]
+    elif len(p2)==4:
+      try:
+        item[p2[1]] = float(p2[2])
+      except:
+        item[p2[1]] = p2[2]
+    elif len(p1)==4: 
+      ext3d = {}
+      for p in re.findall(r'([^#:\,]+)=([^"\,]+|"[^"]*")',p1[2]):
+        try:
+          ext3d[p[0]]=int(p[1])
+        except:
+          ext3d[p[0]]=p[1]
+      if len(ext3d)>0:
+        item[p1[1]] = ext3d
+      else:
+        item[p1[1]] = p1[2]
+    else:
+      item['url']=line
+      m3uout.extend([item])
+      item = {}
+  return m3uout
+
 # Parse arguments
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
 parser.add_argument('url',metavar='url',nargs=1,default='',
@@ -31,7 +69,6 @@ if len(link)<8:
 
 
 # Download webpage
-user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
 headers = {'User-Agent': user_agent}
 req = urllib.request.Request(clean_url, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
@@ -48,7 +85,6 @@ videoAsset = videoAssets[0]['publicUrl']
 
 
 # Resolve link (MP4)
-user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
 headers = {'User-Agent': user_agent}
 req = urllib.request.Request(videoAsset, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
@@ -60,11 +96,9 @@ ydata1 = xdata1[0]['src']
 zdata1=urllib.request.urlopen(ydata1).geturl()
 print(ydata1)
 print(zdata1)
-#print(json.dumps(xdata1,indent=2))
 
 
 # Resolve link (M3U8)
-user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
 headers = {'User-Agent': user_agent}
 req = urllib.request.Request('{}&manifest=m3u'.format(videoAsset), data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
@@ -75,13 +109,26 @@ ydata2 = xdata2[0]['src']
 zdata2=urllib.request.urlopen(ydata2).geturl()
 print(ydata2)
 print(zdata2)
-#print(json.dumps(xdata2,indent=2))
 
 
-user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+# Download master.m3u8
 headers = {'User-Agent': user_agent}
 req = urllib.request.Request(zdata2, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
-  master_m3u8 = response.read().split()
+  master_m3u8 = response.read().decode('utf-8').split('\n')
+m3ulist = import_m3u(master_m3u8)
+m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
+m3uitem = m3ulist[0]
 
-print(json.dumps([str(x) for x in master_m3u8],indent=2))
+print(json.dumps(m3uitem,indent=2))
+
+# Download index.m3u8
+headers = {'User-Agent': user_agent}
+req = urllib.request.Request(m3uitem['url'], data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+  index_m3u8 = response.read().decode('utf-8').split('\n')
+m3uindex = import_m3u(index_m3u8)
+#m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
+#m3uitem = m3ulist[0]
+
+print(json.dumps(m3uindex,indent=2))
