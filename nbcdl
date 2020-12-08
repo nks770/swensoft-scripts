@@ -5,6 +5,8 @@ import json
 import re
 #import subprocess
 #from pathlib import Path
+from datetime import datetime, timezone, timedelta
+#import pytz
 import urllib.request
 from bs4 import BeautifulSoup
 
@@ -80,8 +82,26 @@ jsondata = json.loads(nextdata)
 videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
 videoAssets.sort(key=lambda x: x['bitrate'],reverse=True)
 videoAsset = videoAssets[0]['publicUrl']
-#print(videoAsset)
 
+videoTitle = jsondata['props']['initialState']['video']['current']['headline']['primary']
+videoDesc = jsondata['props']['initialState']['video']['current']['description']['primary']
+dateBroadcast = jsondata['props']['initialState']['video']['current']['dateBroadcast']
+guid = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
+
+# This converts the UTC to Central Time in a rudimentary way
+# It would be better to use pyzt, but this calculation doesnt need to be
+# real precise.  I am OK with it being off by an hour or two.
+broadcastDate = datetime.strptime(dateBroadcast, '%a %b %d %Y %H:%M:%S %Z%z (UTC)')
+broadcastDateET = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+
+
+# Get URL for closed captions (SRT) 
+try:
+  closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
+  closedCaptions = urllib.request.urlopen(closedCaptioning['srt']).geturl()
+except:
+  closedCaptions = None
+print(closedCaptions)
 
 
 # Resolve link (MP4)
@@ -93,9 +113,8 @@ with urllib.request.urlopen(req) as response:
 xdata1 = [x.attrs for x in soup1.find_all('video')]
 xdata1.sort(key=lambda x: x['system-bitrate'],reverse=True)
 ydata1 = xdata1[0]['src']
-zdata1=urllib.request.urlopen(ydata1).geturl()
-print(ydata1)
-print(zdata1)
+mp4link=urllib.request.urlopen(ydata1).geturl()
+print(mp4link)
 
 
 # Resolve link (M3U8)
@@ -106,21 +125,20 @@ with urllib.request.urlopen(req) as response:
  soup2 = BeautifulSoup(vdata2,features='html.parser')
 xdata2 = [x.attrs for x in soup2.find_all('video')]
 ydata2 = xdata2[0]['src']
-zdata2=urllib.request.urlopen(ydata2).geturl()
-print(ydata2)
-print(zdata2)
+master_m3ulink=urllib.request.urlopen(ydata2).geturl()
+print(master_m3ulink)
 
 
 # Download master.m3u8
 headers = {'User-Agent': user_agent}
-req = urllib.request.Request(zdata2, data=None, headers=headers)
+req = urllib.request.Request(master_m3ulink, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
   master_m3u8 = response.read().decode('utf-8').split('\n')
 m3ulist = import_m3u(master_m3u8)
 m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
 m3uitem = m3ulist[0]
+#print(json.dumps(m3uitem,indent=2))
 
-print(json.dumps(m3uitem,indent=2))
 
 # Download index.m3u8
 headers = {'User-Agent': user_agent}
@@ -128,7 +146,11 @@ req = urllib.request.Request(m3uitem['url'], data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
   index_m3u8 = response.read().decode('utf-8').split('\n')
 m3uindex = import_m3u(index_m3u8)
-#m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
-#m3uitem = m3ulist[0]
+#print(json.dumps(m3uindex,indent=2))
 
-print(json.dumps(m3uindex,indent=2))
+#print(json.dumps(jsondata['props']['initialState']['video']['current'],indent=2))
+print(guid)
+print(videoTitle)
+print(videoDesc)
+print(broadcastDate)
+print(broadcastDateET)
