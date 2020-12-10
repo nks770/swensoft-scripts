@@ -4,7 +4,7 @@ import argparse
 import json
 import re
 #import subprocess
-#from pathlib import Path
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 #import pytz
 import urllib.request
@@ -88,11 +88,12 @@ videoDesc = jsondata['props']['initialState']['video']['current']['description']
 dateBroadcast = jsondata['props']['initialState']['video']['current']['dateBroadcast']
 guid = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
 
+
 # This converts the UTC to Central Time in a rudimentary way
 # It would be better to use pyzt, but this calculation doesnt need to be
-# real precise.  I am OK with it being off by an hour or two.
+# really precise.  I am OK with it being off by an hour or two.
 broadcastDate = datetime.strptime(dateBroadcast, '%a %b %d %Y %H:%M:%S %Z%z (UTC)')
-broadcastDateET = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
 
 
 # Get URL for closed captions (SRT) 
@@ -101,7 +102,7 @@ try:
   closedCaptions = urllib.request.urlopen(closedCaptioning['srt']).geturl()
 except:
   closedCaptions = None
-print(closedCaptions)
+#print(closedCaptions)
 
 
 # Resolve link (MP4)
@@ -114,7 +115,7 @@ xdata1 = [x.attrs for x in soup1.find_all('video')]
 xdata1.sort(key=lambda x: x['system-bitrate'],reverse=True)
 ydata1 = xdata1[0]['src']
 mp4link=urllib.request.urlopen(ydata1).geturl()
-print(mp4link)
+#print(mp4link)
 
 
 # Resolve link (M3U8)
@@ -126,7 +127,7 @@ with urllib.request.urlopen(req) as response:
 xdata2 = [x.attrs for x in soup2.find_all('video')]
 ydata2 = xdata2[0]['src']
 master_m3ulink=urllib.request.urlopen(ydata2).geturl()
-print(master_m3ulink)
+#print(master_m3ulink)
 
 
 # Download master.m3u8
@@ -148,9 +149,42 @@ with urllib.request.urlopen(req) as response:
 m3uindex = import_m3u(index_m3u8)
 #print(json.dumps(m3uindex,indent=2))
 
-#print(json.dumps(jsondata['props']['initialState']['video']['current'],indent=2))
-print(guid)
-print(videoTitle)
-print(videoDesc)
-print(broadcastDate)
-print(broadcastDateET)
+# Determine the date code for the program
+pgm_date = broadcastDateCT.strftime('%y%m%d')
+chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',guid)
+if len(chk_date)>2:
+  if pgm_date != chk_date[1]:
+    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
+
+
+# Assemble final program data
+pgmdata = {}
+pgmdata['datecode']=pgm_date
+pgmdata['name']=link[4]
+pgmdata['guid']=guid
+pgmdata['title']=videoTitle
+pgmdata['desc']=videoDesc
+pgmdata['webpage']=clean_url
+pgmdata['asset_url']=videoAsset
+pgmdata['captions_url']=closedCaptions
+pgmdata['mp4_url']=mp4link
+pgmdata['master_url']=master_m3ulink
+pgmdata['m3u8']=m3uitem
+
+print(json.dumps(pgmdata,indent=2))
+
+dir='{}_{}'.format(pgm_date,link[4])
+
+print('Writing {}/response_data/webpage...'.format(dir))
+Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+with open('{}/response_data/webpage'.format(dir),'wb') as f:
+  f.write(webpage)
+print('Writing {}/response_data/asset_mp4...'.format(dir))
+Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
+  f.write(vdata1)
+print('Writing {}/response_data/asset_m3u8...'.format(dir))
+Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
+  f.write(vdata2)
+
