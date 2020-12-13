@@ -52,6 +52,8 @@ def import_m3u(m3ufile):
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
 parser.add_argument('url',metavar='url',nargs=1,default='',
                     help='URL of video to download.')
+parser.add_argument('-t','--test', action='store_true', dest='test',
+                    help='Test mode, do not actually save any files.')
 args = parser.parse_args()
 url = args.url[0]
 
@@ -171,20 +173,22 @@ pgmdata['mp4_url']=mp4link
 pgmdata['master_url']=master_m3ulink
 pgmdata['m3u8']=m3uitem
 
-print(json.dumps(pgmdata,indent=2))
-
 dir='{}_{}'.format(pgm_date,link[4])
 
-print('Writing {}/response_data/webpage...'.format(dir))
-Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
-with open('{}/response_data/webpage'.format(dir),'wb') as f:
-  f.write(webpage)
-print('Writing {}/response_data/asset_mp4...'.format(dir))
-Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
-with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
-  f.write(vdata1)
-print('Writing {}/response_data/asset_m3u8...'.format(dir))
-Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
-with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
-  f.write(vdata2)
+if args.test:
+  print(json.dumps(pgmdata,indent=2))
 
+else:
+  print(json.dumps(pgmdata,indent=2))
+  print('Writing {}/response_data/webpage...'.format(dir))
+  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+  with open('{}/response_data/webpage'.format(dir),'wb') as f:
+    f.write(webpage)
+  print('Writing {}/response_data/asset_mp4...'.format(dir))
+  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+  with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
+    f.write(vdata1)
+  print('Writing {}/response_data/asset_m3u8...'.format(dir))
+  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+  with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
+    f.write(vdata2)
