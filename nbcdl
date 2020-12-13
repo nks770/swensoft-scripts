@@ -3,7 +3,7 @@
 import argparse
 import json
 import re
-#import subprocess
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 #import pytz
@@ -11,6 +11,17 @@ import urllib.request
 from bs4 import BeautifulSoup
 
 user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+
+# Define terminal colors
+class bcolors:
+  HEADER = '\033[95m'
+  OKBLUE = '\033[94m'
+  OKGREEN = '\033[92m'
+  WARNING = '\033[93m'
+  FAIL = '\033[91m'
+  ENDC = '\033[0m'
+  BOLD = '\033[1m'
+  UNDERLINE = '\033[4m'
 
 def import_m3u(m3ufile):
   m3uout = []
@@ -54,6 +65,8 @@ parser.add_argument('url',metavar='url',nargs=1,default='',
                     help='URL of video to download.')
 parser.add_argument('-t','--test', action='store_true', dest='test',
                     help='Test mode, do not actually save any files.')
+parser.add_argument('-f','--force', action='store_true', dest='force',
+                    help='Overwrite data if already exists.')
 args = parser.parse_args()
 url = args.url[0]
 
@@ -114,7 +127,7 @@ with urllib.request.urlopen(req) as response:
  vdata1 = response.read()
  soup1 = BeautifulSoup(vdata1,features='html.parser')
 xdata1 = [x.attrs for x in soup1.find_all('video')]
-xdata1.sort(key=lambda x: x['system-bitrate'],reverse=True)
+xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
 ydata1 = xdata1[0]['src']
 mp4link=urllib.request.urlopen(ydata1).geturl()
 #print(mp4link)
@@ -172,23 +185,90 @@ pgmdata['captions_url']=closedCaptions
 pgmdata['mp4_url']=mp4link
 pgmdata['master_url']=master_m3ulink
 pgmdata['m3u8']=m3uitem
+pgmdata['m3u8']['playlist']=re.split(r'^(.+)\/([^\?]+)(.*)$',m3uitem['url'])[2]
 
 dir='{}_{}'.format(pgm_date,link[4])
+
+file_exists = False
+if Path('.archive/{}.zip'.format(dir)).is_file() or Path('{}.mp4'.format(dir)).is_file():
+  file_exists = True
+
+commands = []
+if not args.test:
+  if file_exists:
+    if args.force:
+      if Path('.archive/{}.zip'.format(dir)).is_file():
+        commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
+      if Path('{}.mp4'.format(dir)).is_file():
+        commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
+    else:
+      print("Nothing to do.")
+      quit()
+
+# Create list of shell commands
+copycmd = []
+cleancmd = []
+archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
+rmcmd = ['rm','-rf',dir]
+
+if pgmdata['master_url'] != None:
+  commands.extend([['wget',pgmdata['master_url'],'-O','{}/ts/master.m3u8'.format(dir)]])
+  commands.extend([['wget',m3uitem['url'],'-O','{}/ts/{}'.format(dir,pgmdata['m3u8']['playlist'])]])
+  for tsfile in m3uindex:
+    commands.extend([['wget',tsfile['url'],'-O','{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2])]])
+  copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
+  cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,guid)]
+
+if pgmdata['mp4_url'] != None:
+  commands.extend([['wget',pgmdata['mp4_url'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['mp4_url'])[2])]])
+  copycmd = ['cp','-av','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['mp4_url'])[2]),'{}.mp4'.format(dir)]
+  cleancmd = []
+
+if pgmdata['captions_url'] != None:
+  commands.extend([['wget',pgmdata['captions_url'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['captions_url'])[2])]])
+
+if len(copycmd)>0:
+  commands.extend([copycmd])
+if len(cleancmd)>0:
+  commands.extend([cleancmd])
+
+commands.extend([archive,rmcmd])
 
 if args.test:
   print(json.dumps(pgmdata,indent=2))
 
+  for cmd in commands:
+    print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+
 else:
-  print(json.dumps(pgmdata,indent=2))
-  print('Writing {}/response_data/webpage...'.format(dir))
+  # Create directories
+  Path('.archive').mkdir(parents=True,exist_ok=True)
   Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+  if pgmdata['master_url'] != None:
+    Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
+
+  # Write data
+  print('Writing {}/pgmdata.json...'.format(dir))
+  with open('{}/pgmdata.json'.format(dir),'w') as f:
+    json.dump(pgmdata,f)
+  print('Writing {}/response_data/webpage...'.format(dir))
   with open('{}/response_data/webpage'.format(dir),'wb') as f:
     f.write(webpage)
   print('Writing {}/response_data/asset_mp4...'.format(dir))
-  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
   with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
     f.write(vdata1)
   print('Writing {}/response_data/asset_m3u8...'.format(dir))
-  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
   with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
     f.write(vdata2)
+
+  # Combine TS files, if required
+  if copycmd[0] == 'ffmpeg':
+    with open('{}/{}.ts'.format(guid),'wb') as out:
+      for ts['url'] in m3uindex:
+        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
+          out.write(inp.read())
+
+  # Run commands
+  for cmd in commands:
+    #print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+    subprocess.run(cmd,capture_output=False,check=True)
