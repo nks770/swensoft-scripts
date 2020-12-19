@@ -12,6 +12,7 @@ import urllib.request, urllib.parse
 from bs4 import BeautifulSoup
 
 user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+headers = {'User-Agent': user_agent}
 
 # Define terminal colors
 class bcolors:
@@ -107,11 +108,14 @@ if len(link)<8:
 #print(link)
 
 # Download webpage
-headers = {'User-Agent': user_agent}
 req = urllib.request.Request(clean_url, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
   webpage = response.read()
   soup = BeautifulSoup(webpage,features='html.parser')
+
+# Initialize program data dictionary
+pgmdata = {}
+pgmdata['webpage']=clean_url
 
 if type == 'nbcnews':
   # Get NEXT_DATA (JSON)
@@ -119,19 +123,49 @@ if type == 'nbcnews':
   jsondata = json.loads(nextdata)
   videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
   videoAssets.sort(key=lambda x: x['bitrate'],reverse=True)
-  videoAsset = videoAssets[0]['publicUrl']
   
-  videoTitle = jsondata['props']['initialState']['video']['current']['headline']['primary']
-  videoDesc = jsondata['props']['initialState']['video']['current']['description']['primary']
   dateBroadcast = jsondata['props']['initialState']['video']['current']['dateBroadcast']
-  guid = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
-  thumbnail = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
 
   # This converts the UTC to Central Time in a rudimentary way
   # It would be better to use pyzt, but this calculation doesnt need to be
   # really precise.  I am OK with it being off by an hour or two.
   broadcastDate = datetime.strptime(dateBroadcast, '%a %b %d %Y %H:%M:%S %Z%z (UTC)')
   broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+
+  # Determine the date code for the program
+  pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
+
+  pgmdata['name'] = link[4]
+  pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
+  pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
+  pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
+  pgmdata['thumb'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
+
+  # Get URL for closed captions (SRT) 
+  try:
+    closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
+    pgmdata['captions'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
+  except:
+    pgmdata['captions'] = None
+
+  # Video asset URLs
+  assetUrl = re.split(r'^([^\?]+)\?(.+)$',videoAssets[0]['publicUrl'])
+  if len(assetUrl)>2:
+    pgmdata['asset'] = {'base':assetUrl[1],
+                  'ext': assetUrl[2]}
+#                'mp4': '',
+#                'm3u': 'manifest=m3u'}
+  else:
+    pgmdata['asset'] = {'base':videoAssets[0]['publicUrl'],
+                  'ext': None}
+#                'mp4': '',
+#                'm3u': 'manifest=m3u'}
+
+  # Check the date code
+  chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',pgmdata['guid'])
+  if len(chk_date)>2:
+    if pgmdata['datecode'] != chk_date[1]:
+      raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,pgmdata['guid']))
 
 #  print(json.dumps(jsondata,indent=2))
 
@@ -155,8 +189,7 @@ if type == 'nbc':
 
   # Get data from player link
   plink = '{}/p/{}/{}/select/media/guid/{}/{}'.format(jsondata['MPX']['domain'],jsondata['MPX']['pid'],jsondata['MPX']['playerName'],jsondata['MPX']['id'],link[6])
-  print(plink)
-  headers = {'User-Agent': user_agent}
+#  print(plink)
   req = urllib.request.Request(plink, data=None, headers=headers)
   with urllib.request.urlopen(req) as response:
     pdata = response.read()
@@ -169,46 +202,19 @@ if type == 'nbc':
     plink2a = plink2b
   if plink2a != None and plink2b != None and plink2a != plink2b:
     raise Exception("ERROR: Links different.\nlink1={}\nlink2={}.".format(plink2a,plink2b))
-  videoAsset = '{}&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(plink2a)
-  # Also check out format=preview
+
+  previewUrl = '{}&format=preview&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(plink2a)
+  req = urllib.request.Request(previewUrl, data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+    preview = response.read()
+  preview_json = json.loads(preview.decode('utf-8'))
+
 
 #  print(psoup.decode('utf-8'))
 #  print(json.dumps(ldjson,indent=2))
 #  print(json.dumps(jsondata,indent=2))
 #  print(json.dumps(preload_pages,indent=2))
-
-  # Thumbnail image URL
-  try:
-    thumbnail = ldjson['video']['thumbnailUrl']
-  except KeyError:
-    try:
-      thumbnail = preload_pages['metadata']['image']
-    except KeyError:
-      thumbnail = psoup.find('meta',attrs={'property':'og:image'})['content']
-
-  # Video title
-  try:
-    videoTitle = ldjson['video']['name']
-  except KeyError:
-    try:
-      videoTitle = preload_pages['metadata']['secondaryTitle']
-    except KeyError:
-      videoTitle = psoup.find('meta',attrs={'property':'og:title'})['content']
-
-  # Video description
-  try:
-    videoDesc = preload_pages['metadata']['ariaLabel']
-  except KeyError:
-    try:
-      videoDesc = preload_pages['metadata']['title']
-    except KeyError:
-      try:
-        videoDesc = preload_pages['metadata']['description']
-      except KeyError:
-        try:
-          videoDesc = ldjson['video']['description']
-        except KeyError:
-          videoDesc = psoup.find('meta',attrs={'property':'og:description'})['content']
+#  print(json.dumps(preview_json,indent=2))
 
   # Broadcast date
   try:
@@ -216,78 +222,151 @@ if type == 'nbc':
   except KeyError:
     dateBroadcast = ldjson['video']['uploadDate']
 
-  guid=link[5]
-
   # This converts the UTC to Central Time in a rudimentary way
   # It would be better to use pyzt, but this calculation doesnt need to be
   # really precise.  I am OK with it being off by an hour or two.
   broadcastDate = datetime.strptime(dateBroadcast, '%Y-%m-%dT%H:%M:%S.%fZ')
   broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
 
+  # Determine the date code for the program
+  pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
+  #chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',guid)
+  #if len(chk_date)>2:
+  #  if datecode != chk_date[1]:
+  #    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
+  pgmdata['name'] = link[5]
+  pgmdata['guid'] = link[5]
 
-# Get URL for closed captions (SRT) 
-try:
-  closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
-  closedCaptions = urllib.request.urlopen(closedCaptioning['srt']).geturl()
-except:
-  closedCaptions = None
-#print(closedCaptions)
+  # Video title
+  try:
+    pgmdata['title'] = ldjson['video']['name']
+  except KeyError:
+    try:
+      pgmdata['title'] = preload_pages['metadata']['secondaryTitle']
+    except KeyError:
+      pgmdata['title'] = psoup.find('meta',attrs={'property':'og:title'})['content']
 
+  # Video description
+  try:
+    pgmdata['desc'] = preload_pages['metadata']['ariaLabel']
+  except KeyError:
+    try:
+      pgmdata['desc'] = preload_pages['metadata']['title']
+    except KeyError:
+      try:
+        pgmdata['desc'] = preload_pages['metadata']['description']
+      except KeyError:
+        try:
+          pgmdata['desc'] = ldjson['video']['description']
+        except KeyError:
+          pgmdata['desc'] = psoup.find('meta',attrs={'property':'og:description'})['content']
 
-# Resolve link (MP4)
-print(videoAsset)
-headers = {'User-Agent': user_agent}
-req = urllib.request.Request(videoAsset, data=None, headers=headers)
+  # Webpage URLs
+  pgmdata['webpage'] = clean_url
+
+  # Thumbnail image URL
+  try:
+    pgmdata['thumb'] = ldjson['video']['thumbnailUrl']
+  except KeyError:
+    try:
+      pgmdata['thumb'] = preload_pages['metadata']['image']
+    except KeyError:
+      pgmdata['thumb'] = psoup.find('meta',attrs={'property':'og:image'})['content']
+
+  # Get the closed captions file
+  pgmdata['captions'] = None
+  for cap in preview_json['captions']:
+    if cap['lang'] == 'en':
+      pgmdata['captions'] = cap['src']
+
+  # Video asset URLs
+  assetUrl = re.split(r'^([^\?]+)\?(.+)$',plink2a)
+  if len(assetUrl)>2:
+    pgmdata['asset'] = {'base':assetUrl[1],
+                  'ext': assetUrl[2]}
+#                  'mp4': 'format=SMIL&formats=MPEG4',
+#                  'm3u': 'format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'}
+  else:
+    pgmdata['asset'] = {'base':plink2a,
+                  'ext': None}
+#                  'mp4': 'format=SMIL&formats=MPEG4',
+#                  'm3u': 'format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'}
+
+  
+pgmdata['data'] = {}
+pgmdata['data']['mp4'] = {}
+pgmdata['data']['m3u'] = {}
+
+# Get MP4 file link
+#url = '{}?mbr=true'.format(pgmdata['asset']['base'])
+url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(pgmdata['asset']['base'])
+req = urllib.request.Request(url, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
  vdata1 = response.read()
  soup1 = BeautifulSoup(vdata1,features='html.parser')
-
-print(vdata1.decode('utf-8'))
-quit()
+#print(vdata1.decode('utf-8'))
 xdata1 = [x.attrs for x in soup1.find_all('video')]
 xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
-ydata1 = xdata1[0]['src']
-mp4link=urllib.request.urlopen(ydata1).geturl()
-#print(mp4link)
+#print(json.dumps(xdata1,indent=2))
+try:
+  pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
+  pgmdata['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['data']['mp4']['url'])[2]
+  try:
+    pgmdata['data']['mp4']['width'] = int(xdata1[0]['width'])
+    pgmdata['data']['mp4']['height'] = int(xdata1[0]['height'])
+  except KeyError:
+    pgmdata['data']['mp4']['width'] = None
+    pgmdata['data']['mp4']['height'] = None
+except urllib.error.HTTPError:
+  pgmdata['data']['mp4'] = None
+  #pgmdata['data']['mp4']['url'] = None
+  #pgmdata['data']['mp4']['width'] = None
+  #pgmdata['data']['mp4']['height'] = None
 
 
-# Resolve link (M3U8)
-headers = {'User-Agent': user_agent}
-req = urllib.request.Request('{}&manifest=m3u'.format(videoAsset), data=None, headers=headers)
+# Get M3U file link
+#url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
+#url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+req = urllib.request.Request(url, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
  vdata2 = response.read()
  soup2 = BeautifulSoup(vdata2,features='html.parser')
+#print(vdata2.decode('utf-8'))
 xdata2 = [x.attrs for x in soup2.find_all('video')]
-ydata2 = xdata2[0]['src']
-master_m3ulink=urllib.request.urlopen(ydata2).geturl()
-#print(master_m3ulink)
+xdata2.sort(key=lambda x: int(x['width']),reverse=True)
+#print(json.dumps(xdata2[0],indent=2))
+if len(xdata2[0]['abstract']) > len(pgmdata['desc']):
+  pgmdata['desc'] = xdata2[0]['abstract']
+try:
+  pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
+except urllib.error.HTTPError:
+  pgmdata['data']['m3u'] = None
+
+# Assemble final program data
+print(json.dumps(pgmdata,indent=2))
+quit()
 
 
-# Download master.m3u8
-headers = {'User-Agent': user_agent}
-req = urllib.request.Request(master_m3ulink, data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
-  master_m3u8 = response.read().decode('utf-8').split('\n')
-m3ulist = import_m3u(master_m3u8)
-m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
-m3uitem = m3ulist[0]
-#print(json.dumps(m3uitem,indent=2))
-
-
-# Download index.m3u8
-headers = {'User-Agent': user_agent}
-req = urllib.request.Request(m3uitem['url'], data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
-  index_m3u8 = response.read().decode('utf-8').split('\n')
-m3uindex = import_m3u(index_m3u8)
-#print(json.dumps(m3uindex,indent=2))
-
-# Determine the date code for the program
-pgm_date = broadcastDateCT.strftime('%y%m%d')
-chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',guid)
-if len(chk_date)>2:
-  if pgm_date != chk_date[1]:
-    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
+## Download master.m3u8
+#headers = {'User-Agent': user_agent}
+#req = urllib.request.Request(master_m3ulink, data=None, headers=headers)
+#with urllib.request.urlopen(req) as response:
+#  master_m3u8 = response.read().decode('utf-8').split('\n')
+#m3ulist = import_m3u(master_m3u8)
+#m3ulist.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
+#m3uitem = m3ulist[0]
+##print(json.dumps(m3uitem,indent=2))
+#
+#
+## Download index.m3u8
+#headers = {'User-Agent': user_agent}
+#req = urllib.request.Request(m3uitem['url'], data=None, headers=headers)
+#with urllib.request.urlopen(req) as response:
+#  index_m3u8 = response.read().decode('utf-8').split('\n')
+#m3uindex = import_m3u(index_m3u8)
+##print(json.dumps(m3uindex,indent=2))
+#
 
 
 # Assemble final program data
