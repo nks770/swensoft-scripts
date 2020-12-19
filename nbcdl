@@ -11,7 +11,9 @@ from datetime import datetime, timezone, timedelta
 import urllib.request, urllib.parse
 from bs4 import BeautifulSoup
 
-user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+#user_agent = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)'
+#user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0'
+user_agent = 'Lavf/58.45.100'
 headers = {'User-Agent': user_agent}
 
 # Define terminal colors
@@ -209,7 +211,6 @@ if type == 'nbc':
     preview = response.read()
   preview_json = json.loads(preview.decode('utf-8'))
 
-
 #  print(psoup.decode('utf-8'))
 #  print(json.dumps(ldjson,indent=2))
 #  print(json.dumps(jsondata,indent=2))
@@ -319,15 +320,13 @@ try:
     pgmdata['data']['mp4']['height'] = None
 except (urllib.error.HTTPError, IndexError) as e:
   pgmdata['data']['mp4'] = None
-  #pgmdata['data']['mp4']['url'] = None
-  #pgmdata['data']['mp4']['width'] = None
-  #pgmdata['data']['mp4']['height'] = None
 
 
 # Get M3U file link
 #url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
+url = '{}?mbr=true&format=SMIL&manifest=m3u'.format(pgmdata['asset']['base'])
 #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
-url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+#url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
 req = urllib.request.Request(url, data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
  vdata2 = response.read()
@@ -348,42 +347,33 @@ except (urllib.error.HTTPError,IndexError) as e:
 
 
 # Download master.m3u8
+#print(pgmdata['data']['m3u']['master'])
 req = urllib.request.Request(pgmdata['data']['m3u']['master'], data=None, headers=headers)
 with urllib.request.urlopen(req) as response:
   vdata3 = response.read()
 #print(vdata3.decode('utf-8'))
 xdata3 = import_m3u(vdata3)
 xdata3.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
-print(json.dumps(xdata3,indent=2))
+#print(json.dumps(xdata3,indent=2))
+pgmdata['data']['m3u']['index'] = xdata3[0]['url']
+pgmdata['data']['m3u']['indexfile'] = re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['index'])[2]
+#print(json.dumps(xdata3[0],indent=2))
 try:
-  pgmdata['data']['m3u']['index'] = urllib.request.urlopen(xdata3[0]['url']).geturl()
-  ydata3 = xdata3[0]
-except urllib.error.HTTPError:
-  try:
-    pgmdata['data']['m3u']['index'] = urllib.request.urlopen(xdata3[1]['url']).geturl()
-    ydata3 = xdata3[1]
-  except urllib.error.HTTPError:
-    try:
-      pgmdata['data']['m3u']['index'] = urllib.request.urlopen(xdata3[2]['url']).geturl()
-      ydata3 = xdata3[2]
-    except urllib.error.HTTPError:
-      pgmdata['data']['m3u']['index'] = urllib.request.urlopen(xdata3[3]['url']).geturl()
-      ydata3 = xdata3[3]
-
-print(json.dumps(ydata3,indent=2))
-
-try:
-  resolution=re.split(r'(\d+)x(\d+)',ydata3['EXT-X-STREAM-INF']['RESOLUTION'])
+  resolution=re.split(r'(\d+)x(\d+)',xdata3[0]['EXT-X-STREAM-INF']['RESOLUTION'])
   pgmdata['data']['m3u']['width'] = int(resolution[1])
   pgmdata['data']['m3u']['height'] = int(resolution[2])
 except KeyError:
   pgmdata['data']['m3u']['width'] = None
   pgmdata['data']['m3u']['height'] = None
-#try:
-#  pgmdata['data']['m3u']['index'] = urllib.request.urlopen(xdata3[0]['url']).geturl()
-#except (urllib.error.HTTPError,IndexError) as e:
-#  pgmdata['data']['m3u'] = None
 
+
+# Open index.m3u8
+req = urllib.request.Request(pgmdata['data']['m3u']['index'], data=None, headers=headers)
+with urllib.request.urlopen(req) as response:
+  vdata4 = response.read()
+#print(vdata4.decode('utf-8'))
+xdata4 = import_m3u(vdata4)
+print(json.dumps(xdata4,indent=2))
 
 # Assemble final program data
 print(json.dumps(pgmdata,indent=2))
