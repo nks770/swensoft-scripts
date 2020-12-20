@@ -87,7 +87,7 @@ def clean_bracket(s):
 
 # Parse arguments
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
-parser.add_argument('url',metavar='url',nargs=1,default='',
+parser.add_argument('url',metavar='url',nargs='*',default='',
                     help='URL of video to download.')
 parser.add_argument('-t','--test', action='store_true', dest='test',
                     help='Test mode, only test the URL and display the JSON.')
@@ -95,428 +95,453 @@ parser.add_argument('-d','--dryfun', action='store_true', dest='dryrun',
                     help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
                     help='Overwrite data if already exists.')
-parser.add_argument('-r','--restart', action='store_true', dest='restart',
+parser.add_argument('-r','--restart', metavar='DIRECTORY', dest='prevdir',default='',
                     help='Restart mode, skip the download and only do the finalization steps.')
 args = parser.parse_args()
-url = args.url[0]
 
-
-# Verify provided URL
-link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',url)
-type = 'nbcnews'
-
-if len(link)<8:
-  link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',url)
-  type = 'nbc'
-
-clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
-
-if len(link)<8:
-  raise Exception("Unhandled URL pattern.")
-
-#print(link)
-
-# Download webpage
-req = urllib.request.Request(clean_url, data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
-  webpage = response.read()
-  soup = BeautifulSoup(webpage,features='html.parser')
-
-# Initialize program data dictionary
-pgmdata = {}
-pgmdata['webpage']=clean_url
-
-if type == 'nbcnews':
-  # Get NEXT_DATA (JSON)
-  nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
-  jsondata = json.loads(nextdata)
-  videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
-  videoAssets.sort(key=lambda x: x['bitrate'],reverse=True)
-  
-  dateBroadcast = jsondata['props']['initialState']['video']['current']['dateBroadcast']
-
-  # This converts the UTC to Central Time in a rudimentary way
-  # It would be better to use pyzt, but this calculation doesnt need to be
-  # really precise.  I am OK with it being off by an hour or two.
-  broadcastDate = datetime.strptime(dateBroadcast, '%a %b %d %Y %H:%M:%S %Z%z (UTC)')
-  broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
-
-  # Determine the date code for the program
-  pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
-
-  pgmdata['name'] = link[4]
-  pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
-  pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
-  pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
-  try:
-    pgmdata['thumbnail'] = {}
-    pgmdata['thumbnail']['url'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
-    pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
-  except KeyError:
-    pgmdata['thumbnail'] = None
-
-  # Get URL for closed captions (SRT) 
-  try:
-    pgmdata['captions'] = {}
-    closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
-    pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
-    pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
-  except KeyError:
-    pgmdata['captions'] = None
-
-  # Video asset URLs
-  assetUrl = re.split(r'^([^\?]+)\?(.+)$',videoAssets[0]['publicUrl'])
-  if len(assetUrl)>2:
-    pgmdata['asset'] = {'base':assetUrl[1],
-                  'ext': assetUrl[2]}
-#                'mp4': '',
-#                'm3u': 'manifest=m3u'}
-  else:
-    pgmdata['asset'] = {'base':videoAssets[0]['publicUrl'],
-                  'ext': None}
-#                'mp4': '',
-#                'm3u': 'manifest=m3u'}
-
-  # Check the date code
-  chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',pgmdata['guid'])
-  if len(chk_date)>2:
-    if pgmdata['datecode'] != chk_date[1]:
-      raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,pgmdata['guid']))
-
-#  print(json.dumps(jsondata,indent=2))
-
-if type == 'nbc':
-
-  # Get LD+JSON (JSON)
-  ldjson = json.loads(soup.find('script',attrs={'type':re.compile('json')}).string)
-
-  # Get EXPORTS (JSON)
-  exports = webpage.decode('utf-8').split('.exports=')
-  for i in reversed(range(len(exports))):
-    exports[i] = clean_bracket(exports[i])
-    if exports[i][0] != '{' or 'MPX' not in exports[i]:
-      exports.pop(i)
-  expdata = re.sub(r'\!([01{1}])',r'\1',exports[0])
-  jsondata = demjson.decode(expdata)
-
-  # Get PRELOAD (JSON)
-  preload = json.loads(re.split(r'^PRELOAD\=(.+)$',soup.find('script',text=re.compile(r'^PRELOAD\=(.+)$')).string)[1])
-  preload_pages=preload['pages'][list(preload['pages'].keys())[0]]
-
-  # Get data from player link
-  plink = '{}/p/{}/{}/select/media/guid/{}/{}'.format(jsondata['MPX']['domain'],jsondata['MPX']['pid'],jsondata['MPX']['playerName'],jsondata['MPX']['id'],link[6])
-#  print(plink)
-  req = urllib.request.Request(plink, data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-    pdata = response.read()
-    psoup = BeautifulSoup(pdata,features='html.parser')
- 
-  # Determine videoAsset link
-  plink2a = psoup.find('link',attrs={'rel':'alternate','type':re.compile('smil')})['href']
-  plink2b = re.findall(r'(?i:tp\:releaseurl)=\"([^\"]+)\"',pdata.decode('utf-8'))[0]
-  if plink2a == None:
-    plink2a = plink2b
-  if plink2a != None and plink2b != None and plink2a != plink2b:
-    raise Exception("ERROR: Links different.\nlink1={}\nlink2={}.".format(plink2a,plink2b))
-
-  previewUrl = '{}&format=preview&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(plink2a)
-  req = urllib.request.Request(previewUrl, data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-    preview = response.read()
-  preview_json = json.loads(preview.decode('utf-8'))
-
-#  print(psoup.decode('utf-8'))
-#  print(json.dumps(ldjson,indent=2))
-#  print(json.dumps(jsondata,indent=2))
-#  print(json.dumps(preload_pages,indent=2))
-#  print(json.dumps(preview_json,indent=2))
-
-  # Broadcast date
-  try:
-    dateBroadcast = preload_pages['metadata']['airDate']
-  except KeyError:
-    dateBroadcast = ldjson['video']['uploadDate']
-
-  # This converts the UTC to Central Time in a rudimentary way
-  # It would be better to use pyzt, but this calculation doesnt need to be
-  # really precise.  I am OK with it being off by an hour or two.
-  broadcastDate = datetime.strptime(dateBroadcast, '%Y-%m-%dT%H:%M:%S.%fZ')
-  broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
-
-  # Determine the date code for the program
-  pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
-  #chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',guid)
-  #if len(chk_date)>2:
-  #  if datecode != chk_date[1]:
-  #    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
-  pgmdata['name'] = link[5]
-  pgmdata['guid'] = link[5]
-
-  # Video title
-  try:
-    pgmdata['title'] = ldjson['video']['name']
-  except KeyError:
-    try:
-      pgmdata['title'] = preload_pages['metadata']['secondaryTitle']
-    except KeyError:
-      pgmdata['title'] = psoup.find('meta',attrs={'property':'og:title'})['content']
-
-  # Video description
-  try:
-    pgmdata['desc'] = preload_pages['metadata']['ariaLabel']
-  except KeyError:
-    try:
-      pgmdata['desc'] = preload_pages['metadata']['title']
-    except KeyError:
-      try:
-        pgmdata['desc'] = preload_pages['metadata']['description']
-      except KeyError:
-        try:
-          pgmdata['desc'] = ldjson['video']['description']
-        except KeyError:
-          pgmdata['desc'] = psoup.find('meta',attrs={'property':'og:description'})['content']
-
-  # Webpage URLs
-  pgmdata['webpage'] = clean_url
-
-  # Thumbnail image URL
-  try:
-    pgmdata['thumbnail'] = {}
-    try:
-      pgmdata['thumbnail']['url'] = ldjson['video']['thumbnailUrl']
-    except KeyError:
-      try:
-        pgmdata['thumbnail']['url'] = preload_pages['metadata']['image']
-      except KeyError:
-        pgmdata['thumbnail']['url'] = psoup.find('meta',attrs={'property':'og:image'})['content']
-    pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
-  except KeyError:
-    pgmdata['thumbnail'] = None
-
-  # Get the closed captions file
-  try:
-    pgmdata['captions'] = {}
-    for cap in preview_json['captions']:
-      if cap['lang'] == 'en':
-        pgmdata['captions']['url'] = cap['src']
-    pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
-  except KeyError:
-    pgmdata['captions'] = None
-
-  # Video asset URLs
-  assetUrl = re.split(r'^([^\?]+)\?(.+)$',plink2a)
-  if len(assetUrl)>2:
-    pgmdata['asset'] = {'base':assetUrl[1],
-                  'ext': assetUrl[2]}
-  else:
-    pgmdata['asset'] = {'base':plink2a,
-                  'ext': None}
-
-  
-pgmdata['data'] = {}
-pgmdata['data']['mp4'] = {}
-pgmdata['data']['m3u'] = {}
-
-# Get MP4 file link
-#url = '{}?mbr=true'.format(pgmdata['asset']['base'])
-url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(pgmdata['asset']['base'])
-req = urllib.request.Request(url, data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
- vdata1 = response.read()
- soup1 = BeautifulSoup(vdata1,features='html.parser')
-#print(vdata1.decode('utf-8'))
-xdata1 = [x.attrs for x in soup1.find_all('video')]
-xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
-#print(json.dumps(xdata1,indent=2))
 try:
-  pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
-  pgmdata['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['data']['mp4']['url'])[2]
-  try:
-    pgmdata['data']['mp4']['width'] = int(xdata1[0]['width'])
-    pgmdata['data']['mp4']['height'] = int(xdata1[0]['height'])
-  except KeyError:
-    pgmdata['data']['mp4']['width'] = None
-    pgmdata['data']['mp4']['height'] = None
-except (urllib.error.HTTPError, IndexError) as e:
-#  print(xdata1[0]['src'])
-  pgmdata['data']['mp4'] = None
-
-
-# Get M3U file link
-#url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
-url = '{}?mbr=true&format=SMIL&manifest=m3u'.format(pgmdata['asset']['base'])
-#url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
-#url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
-req = urllib.request.Request(url, data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
- vdata2 = response.read()
- soup2 = BeautifulSoup(vdata2,features='html.parser')
-#print(vdata2.decode('utf-8'))
-xdata2 = [x.attrs for x in soup2.find_all('video')]
-xdata2.sort(key=lambda x: int(x['width']),reverse=True)
-#print(json.dumps(xdata2[0],indent=2))
-try:
-  if len(xdata2[0]['abstract']) > len(pgmdata['desc']):
-    pgmdata['desc'] = xdata2[0]['abstract']
+  url = args.url[0]
 except IndexError:
-  pass
-try:
-  pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
+  url = ''
 
-  # Download master.m3u8
-  #print(pgmdata['data']['m3u']['master'])
-  req = urllib.request.Request(pgmdata['data']['m3u']['master'], data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-    vdata3 = response.read()
-  #print(vdata3.decode('utf-8'))
-  xdata3 = import_m3u(vdata3)
-  xdata3.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
-  #print(json.dumps(xdata3,indent=2))
-  pgmdata['data']['m3u']['index'] = xdata3[0]['url']
-  pgmdata['data']['m3u']['indexfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['index'])[2]
-  #print(json.dumps(xdata3[0],indent=2))
-  try:
-    resolution=re.split(r'(\d+)x(\d+)',xdata3[0]['EXT-X-STREAM-INF']['RESOLUTION'])
-    pgmdata['data']['m3u']['width'] = int(resolution[1])
-    pgmdata['data']['m3u']['height'] = int(resolution[2])
-  except KeyError:
-    pgmdata['data']['m3u']['width'] = None
-    pgmdata['data']['m3u']['height'] = None
-  
-  
-  # Open index.m3u8
-  req = urllib.request.Request(pgmdata['data']['m3u']['index'], data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-    vdata4 = response.read()
-  #print(vdata4.decode('utf-8'))
-  xdata4 = import_m3u(vdata4)
-  try:
-    pgmdata['data']['m3u']['encryption'] = {}
-    pgmdata['data']['m3u']['encryption']['method'] = xdata4[0]['EXT-X-KEY']['METHOD']
-    pgmdata['data']['m3u']['encryption']['keyurl'] = xdata4[0]['EXT-X-KEY']['URI']
-    pgmdata['data']['m3u']['encryption']['keyfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['encryption']['keyurl'])[2]
-  except KeyError:
-    pgmdata['data']['m3u']['encryption'] = None
-  for i in range(1,len(xdata4)):
-    if 'EXT-X-KEY' in xdata4[i].keys():
-      raise Exception("Possibly multiple EXT-X-KEY groups detected.")
-  
-  # Get the M3U encryption key
-  if pgmdata['data']['m3u']['encryption'] != None:
-    req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
-    with urllib.request.urlopen(req) as response:
-      cryptokey = response.read()
-    pgmdata['data']['m3u']['encryption']['key']=(' '.join('{:02x}'.format(x) for x in cryptokey))
-
-  pgmdata['data']['m3u']['playlist'] = []
-  for ts in xdata4:
-    tt = {}
-    #tt['url'] = urllib.request.urlopen(ts['url']).geturl()
-    tt['url'] = ts['url']
-    tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
-    pgmdata['data']['m3u']['playlist'].extend([tt])
-  
-except (urllib.error.HTTPError,IndexError) as e:
-  pgmdata['data']['m3u'] = None
-  
-#print(json.dumps(xdata4,indent=2))
-if args.test or args.dryrun:
-  print(json.dumps(pgmdata,indent=2))
-if args.test:
-  quit()
-
-dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
-
-file_exists = False
-if Path('.archive/{}.zip'.format(dir)).is_file() or Path('{}.mp4'.format(dir)).is_file():
-  file_exists = True
-
-commands = []
-if file_exists:
-  if args.force:
-    if Path('.archive/{}.zip'.format(dir)).is_file():
-      commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
-    if Path('{}.mp4'.format(dir)).is_file():
-      commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
-
-# Create list of shell commands
-copycmd = []
-cleancmd = []
-archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
-rmcmd = ['rm','-rf',dir]
-
-if pgmdata['data']['m3u'] != None:
-  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['master'],'-O','{}/ts/master.m3u8'.format(dir)]])
-  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
-  for ts in pgmdata['data']['m3u']['playlist']:
-    commands.extend([['wget','--user-agent={}'.format(user_agent),ts['url'],'-O','{}/ts/{}'.format(dir,ts['file'])]])
-  #copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
-  copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-copy','{}.mp4'.format(dir)]
-  cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,pgmdata['guid'])]
-
-if pgmdata['data']['mp4'] != None:
-  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['mp4']['url'],'-O','{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])]])
-  copycmd = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
-  cleancmd = []
-
-if pgmdata['captions'] != None:
-  commands.extend([['wget',pgmdata['captions']['url'],'-O','{}/{}'.format(dir,pgmdata['captions']['filename'])]])
-if pgmdata['thumbnail'] != None:
-  commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,,pgmdata['thumbnail']['filename'])]])
-
-if len(copycmd)>0:
-  commands.extend([copycmd])
-if len(cleancmd)>0:
-  commands.extend([cleancmd])
-
-commands.extend([archive,rmcmd])
-
-if file_exists and not args.force:
-  commands = []
-  print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
-  quit()
-
-if args.dryrun:
-  for cmd in commands:
-    print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
-  quit()
+# If this is a restart run, then load the JSON.
+if args.prevdir != '':
+  with open('{}/metadata.json'.format(args.prevdir),'r') as j:
+    pgmdata = json.load(j)
 
 else:
-
-  # Create directories
-  Path('.archive').mkdir(parents=True,exist_ok=True)
-  Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+  # Verify provided URL
+  try:
+    link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',url)
+    type = 'nbcnews'
+    clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
+  except IndexError:
+    try:
+      link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',url)
+      type = 'nbc'
+      clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
+    except IndexError:
+      if url != '':
+        raise Exception("Unable to recognize that kind of URL! Maybe that website isn't being handled by this script.")
+      else:
+        parser.print_help()
+        quit()
+  
+  if len(link)<8:
+    raise Exception("URL parsing error!")
+  
+  #print(link)
+  
+  # Download webpage
+  req = urllib.request.Request(clean_url, data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+    webpage = response.read()
+    soup = BeautifulSoup(webpage,features='html.parser')
+  
+  # Initialize program data dictionary
+  pgmdata = {}
+  pgmdata['webpage']=clean_url
+  
+  if type == 'nbcnews':
+    # Get NEXT_DATA (JSON)
+    nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
+    jsondata = json.loads(nextdata)
+    videoAssets = jsondata['props']['initialState']['video']['current']['videoAssets']
+    videoAssets.sort(key=lambda x: x['bitrate'],reverse=True)
+    
+    dateBroadcast = jsondata['props']['initialState']['video']['current']['dateBroadcast']
+  
+    # This converts the UTC to Central Time in a rudimentary way
+    # It would be better to use pyzt, but this calculation doesnt need to be
+    # really precise.  I am OK with it being off by an hour or two.
+    broadcastDate = datetime.strptime(dateBroadcast, '%a %b %d %Y %H:%M:%S %Z%z (UTC)')
+    broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+  
+    # Determine the date code for the program
+    pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
+  
+    pgmdata['name'] = link[4]
+    pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
+    pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
+    pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
+    try:
+      pgmdata['thumbnail'] = {}
+      pgmdata['thumbnail']['url'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
+      pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
+    except KeyError:
+      pgmdata['thumbnail'] = None
+  
+    # Get URL for closed captions (SRT) 
+    try:
+      pgmdata['captions'] = {}
+      closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
+      pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
+      pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
+    except KeyError:
+      pgmdata['captions'] = None
+  
+    # Video asset URLs
+    assetUrl = re.split(r'^([^\?]+)\?(.+)$',videoAssets[0]['publicUrl'])
+    if len(assetUrl)>2:
+      pgmdata['asset'] = {'base':assetUrl[1],
+                    'ext': assetUrl[2]}
+  #                'mp4': '',
+  #                'm3u': 'manifest=m3u'}
+    else:
+      pgmdata['asset'] = {'base':videoAssets[0]['publicUrl'],
+                    'ext': None}
+  #                'mp4': '',
+  #                'm3u': 'manifest=m3u'}
+  
+    # Check the date code
+    chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',pgmdata['guid'])
+    if len(chk_date)>2:
+      if pgmdata['datecode'] != chk_date[1]:
+        raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,pgmdata['guid']))
+  
+  #  print(json.dumps(jsondata,indent=2))
+  
+  if type == 'nbc':
+  
+    # Get LD+JSON (JSON)
+    ldjson = json.loads(soup.find('script',attrs={'type':re.compile('json')}).string)
+  
+    # Get EXPORTS (JSON)
+    exports = webpage.decode('utf-8').split('.exports=')
+    for i in reversed(range(len(exports))):
+      exports[i] = clean_bracket(exports[i])
+      if exports[i][0] != '{' or 'MPX' not in exports[i]:
+        exports.pop(i)
+    expdata = re.sub(r'\!([01{1}])',r'\1',exports[0])
+    jsondata = demjson.decode(expdata)
+  
+    # Get PRELOAD (JSON)
+    preload = json.loads(re.split(r'^PRELOAD\=(.+)$',soup.find('script',text=re.compile(r'^PRELOAD\=(.+)$')).string)[1])
+    preload_pages=preload['pages'][list(preload['pages'].keys())[0]]
+  
+    # Get data from player link
+    plink = '{}/p/{}/{}/select/media/guid/{}/{}'.format(jsondata['MPX']['domain'],jsondata['MPX']['pid'],jsondata['MPX']['playerName'],jsondata['MPX']['id'],link[6])
+  #  print(plink)
+    req = urllib.request.Request(plink, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      pdata = response.read()
+      psoup = BeautifulSoup(pdata,features='html.parser')
+   
+    # Determine videoAsset link
+    plink2a = psoup.find('link',attrs={'rel':'alternate','type':re.compile('smil')})['href']
+    plink2b = re.findall(r'(?i:tp\:releaseurl)=\"([^\"]+)\"',pdata.decode('utf-8'))[0]
+    if plink2a == None:
+      plink2a = plink2b
+    if plink2a != None and plink2b != None and plink2a != plink2b:
+      raise Exception("ERROR: Links different.\nlink1={}\nlink2={}.".format(plink2a,plink2b))
+  
+    previewUrl = '{}&format=preview&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(plink2a)
+    req = urllib.request.Request(previewUrl, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      preview = response.read()
+    preview_json = json.loads(preview.decode('utf-8'))
+  
+  #  print(psoup.decode('utf-8'))
+  #  print(json.dumps(ldjson,indent=2))
+  #  print(json.dumps(jsondata,indent=2))
+  #  print(json.dumps(preload_pages,indent=2))
+  #  print(json.dumps(preview_json,indent=2))
+  
+    # Broadcast date
+    try:
+      dateBroadcast = preload_pages['metadata']['airDate']
+    except KeyError:
+      dateBroadcast = ldjson['video']['uploadDate']
+  
+    # This converts the UTC to Central Time in a rudimentary way
+    # It would be better to use pyzt, but this calculation doesnt need to be
+    # really precise.  I am OK with it being off by an hour or two.
+    broadcastDate = datetime.strptime(dateBroadcast, '%Y-%m-%dT%H:%M:%S.%fZ')
+    broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+  
+    # Determine the date code for the program
+    pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
+    #chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',guid)
+    #if len(chk_date)>2:
+    #  if datecode != chk_date[1]:
+    #    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
+    pgmdata['name'] = link[5]
+    pgmdata['guid'] = link[5]
+  
+    # Video title
+    try:
+      pgmdata['title'] = ldjson['video']['name']
+    except KeyError:
+      try:
+        pgmdata['title'] = preload_pages['metadata']['secondaryTitle']
+      except KeyError:
+        pgmdata['title'] = psoup.find('meta',attrs={'property':'og:title'})['content']
+  
+    # Video description
+    try:
+      pgmdata['desc'] = preload_pages['metadata']['ariaLabel']
+    except KeyError:
+      try:
+        pgmdata['desc'] = preload_pages['metadata']['title']
+      except KeyError:
+        try:
+          pgmdata['desc'] = preload_pages['metadata']['description']
+        except KeyError:
+          try:
+            pgmdata['desc'] = ldjson['video']['description']
+          except KeyError:
+            pgmdata['desc'] = psoup.find('meta',attrs={'property':'og:description'})['content']
+  
+    # Webpage URLs
+    pgmdata['webpage'] = clean_url
+  
+    # Thumbnail image URL
+    try:
+      pgmdata['thumbnail'] = {}
+      try:
+        pgmdata['thumbnail']['url'] = ldjson['video']['thumbnailUrl']
+      except KeyError:
+        try:
+          pgmdata['thumbnail']['url'] = preload_pages['metadata']['image']
+        except KeyError:
+          pgmdata['thumbnail']['url'] = psoup.find('meta',attrs={'property':'og:image'})['content']
+      pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
+    except KeyError:
+      pgmdata['thumbnail'] = None
+  
+    # Get the closed captions file
+    try:
+      pgmdata['captions'] = {}
+      for cap in preview_json['captions']:
+        if cap['lang'] == 'en':
+          pgmdata['captions']['url'] = cap['src']
+      pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
+    except KeyError:
+      pgmdata['captions'] = None
+  
+    # Video asset URLs
+    assetUrl = re.split(r'^([^\?]+)\?(.+)$',plink2a)
+    if len(assetUrl)>2:
+      pgmdata['asset'] = {'base':assetUrl[1],
+                    'ext': assetUrl[2]}
+    else:
+      pgmdata['asset'] = {'base':plink2a,
+                    'ext': None}
+  
+    
+  pgmdata['data'] = {}
+  pgmdata['data']['mp4'] = {}
+  pgmdata['data']['m3u'] = {}
+  
+  # Get MP4 file link
+  #url = '{}?mbr=true'.format(pgmdata['asset']['base'])
+  url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(pgmdata['asset']['base'])
+  req = urllib.request.Request(url, data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+   vdata1 = response.read()
+   soup1 = BeautifulSoup(vdata1,features='html.parser')
+  #print(vdata1.decode('utf-8'))
+  xdata1 = [x.attrs for x in soup1.find_all('video')]
+  xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
+  #print(json.dumps(xdata1,indent=2))
+  try:
+    pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
+    pgmdata['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['data']['mp4']['url'])[2]
+    try:
+      pgmdata['data']['mp4']['width'] = int(xdata1[0]['width'])
+      pgmdata['data']['mp4']['height'] = int(xdata1[0]['height'])
+    except KeyError:
+      pgmdata['data']['mp4']['width'] = None
+      pgmdata['data']['mp4']['height'] = None
+  except (urllib.error.HTTPError, IndexError) as e:
+  #  print(xdata1[0]['src'])
+    pgmdata['data']['mp4'] = None
+  
+  
+  # Get M3U file link
+  #url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
+  url = '{}?mbr=true&format=SMIL&manifest=m3u'.format(pgmdata['asset']['base'])
+  #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+  #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+  req = urllib.request.Request(url, data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+   vdata2 = response.read()
+   soup2 = BeautifulSoup(vdata2,features='html.parser')
+  #print(vdata2.decode('utf-8'))
+  xdata2 = [x.attrs for x in soup2.find_all('video')]
+  xdata2.sort(key=lambda x: int(x['width']),reverse=True)
+  #print(json.dumps(xdata2[0],indent=2))
+  try:
+    if len(xdata2[0]['abstract']) > len(pgmdata['desc']):
+      pgmdata['desc'] = xdata2[0]['abstract']
+  except IndexError:
+    pass
+  try:
+    pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
+  
+    # Download master.m3u8
+    #print(pgmdata['data']['m3u']['master'])
+    req = urllib.request.Request(pgmdata['data']['m3u']['master'], data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      vdata3 = response.read()
+    #print(vdata3.decode('utf-8'))
+    xdata3 = import_m3u(vdata3)
+    xdata3.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
+    #print(json.dumps(xdata3,indent=2))
+    pgmdata['data']['m3u']['index'] = xdata3[0]['url']
+    pgmdata['data']['m3u']['indexfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['index'])[2]
+    #print(json.dumps(xdata3[0],indent=2))
+    try:
+      resolution=re.split(r'(\d+)x(\d+)',xdata3[0]['EXT-X-STREAM-INF']['RESOLUTION'])
+      pgmdata['data']['m3u']['width'] = int(resolution[1])
+      pgmdata['data']['m3u']['height'] = int(resolution[2])
+    except KeyError:
+      pgmdata['data']['m3u']['width'] = None
+      pgmdata['data']['m3u']['height'] = None
+    
+    
+    # Open index.m3u8
+    req = urllib.request.Request(pgmdata['data']['m3u']['index'], data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      vdata4 = response.read()
+    #print(vdata4.decode('utf-8'))
+    xdata4 = import_m3u(vdata4)
+    try:
+      pgmdata['data']['m3u']['encryption'] = {}
+      pgmdata['data']['m3u']['encryption']['method'] = xdata4[0]['EXT-X-KEY']['METHOD']
+      pgmdata['data']['m3u']['encryption']['keyurl'] = xdata4[0]['EXT-X-KEY']['URI']
+      pgmdata['data']['m3u']['encryption']['keyfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['encryption']['keyurl'])[2]
+    except KeyError:
+      pgmdata['data']['m3u']['encryption'] = None
+    for i in range(1,len(xdata4)):
+      if 'EXT-X-KEY' in xdata4[i].keys():
+        raise Exception("Possibly multiple EXT-X-KEY groups detected.")
+    
+    # Get the M3U encryption key
+    if pgmdata['data']['m3u']['encryption'] != None:
+      req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
+      with urllib.request.urlopen(req) as response:
+        cryptokey = response.read()
+      pgmdata['data']['m3u']['encryption']['key']=(' '.join('{:02x}'.format(x) for x in cryptokey))
+  
+    pgmdata['data']['m3u']['playlist'] = []
+    for ts in xdata4:
+      tt = {}
+      #tt['url'] = urllib.request.urlopen(ts['url']).geturl()
+      tt['url'] = ts['url']
+      tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
+      pgmdata['data']['m3u']['playlist'].extend([tt])
+    
+  except (urllib.error.HTTPError,IndexError) as e:
+    pgmdata['data']['m3u'] = None
+    
+  #print(json.dumps(xdata4,indent=2))
+  if args.test or args.dryrun:
+    print(json.dumps(pgmdata,indent=2))
+  if args.test:
+    quit()
+  
+  dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
+  
+  file_exists = False
+  if Path('.archive/{}.zip'.format(dir)).is_file() or Path('{}.mp4'.format(dir)).is_file():
+    file_exists = True
+  
+  commands = []
+  if file_exists:
+    if args.force:
+      if Path('.archive/{}.zip'.format(dir)).is_file():
+        commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
+      if Path('{}.mp4'.format(dir)).is_file():
+        commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
+  
+  # Create list of shell commands
+  copycmd = []
+  cleancmd = []
+  archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
+  rmcmd = ['rm','-rf',dir]
+  
   if pgmdata['data']['m3u'] != None:
-    Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
+    commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['master'],'-O','{}/ts/master.m3u8'.format(dir)]])
+    commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
+    for ts in pgmdata['data']['m3u']['playlist']:
+      commands.extend([['wget','--user-agent={}'.format(user_agent),ts['url'],'-O','{}/ts/{}'.format(dir,ts['file'])]])
+    #copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
+    copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-copy','{}.mp4'.format(dir)]
+    cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,pgmdata['guid'])]
+  
+  if pgmdata['data']['mp4'] != None:
+    commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['mp4']['url'],'-O','{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])]])
+    copycmd = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
+    cleancmd = []
+  
+  if pgmdata['captions'] != None:
+    commands.extend([['wget',pgmdata['captions']['url'],'-O','{}/{}'.format(dir,pgmdata['captions']['filename'])]])
+  if pgmdata['thumbnail'] != None:
+    commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
+  
+  if len(copycmd)>0:
+    commands.extend([copycmd])
+  if len(cleancmd)>0:
+    commands.extend([cleancmd])
+  
+  commands.extend([archive,rmcmd])
+  
+  if file_exists and not args.force:
+    commands = []
+    print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+    quit()
+  
+  if args.dryrun:
+    for cmd in commands:
+      print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+    quit()
+  
+  else:
+  
+    # Create directories
+    Path('.archive').mkdir(parents=True,exist_ok=True)
+    Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
+    if pgmdata['data']['m3u'] != None:
+      Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
+  
+    # Write data
+    print('Writing {}/metadata.json...'.format(dir))
+    with open('{}/metadata.json'.format(dir),'w') as f:
+      json.dump(pgmdata,f)
+    print('Writing {}/response_data/webpage...'.format(dir))
+    with open('{}/response_data/webpage'.format(dir),'wb') as f:
+      f.write(webpage)
+    print('Writing {}/response_data/pdata...'.format(dir))
+    with open('{}/response_data/pdata'.format(dir),'wb') as f:
+      f.write(pdata)
+    print('Writing {}/response_data/preview...'.format(dir))
+    with open('{}/response_data/preview'.format(dir),'wb') as f:
+      f.write(preview)
+    print('Writing {}/response_data/asset_mp4...'.format(dir))
+    with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
+      f.write(vdata1)
+    print('Writing {}/response_data/asset_m3u8...'.format(dir))
+    with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
+      f.write(vdata2)
+    print('Writing {}/ts/master.m3u8...'.format(dir))
+    with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
+      f.write(vdata3)
+    print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
+    with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
+      f.write(vdata4)
+    print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
+    with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
+      f.write(cryptokey)
+  
+    # Run commands
+    for cmd in commands:
+      #print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+      subprocess.run(cmd,capture_output=False,check=True)
 
-  # Write data
-  print('Writing {}/metadata.json...'.format(dir))
-  with open('{}/metadata.json'.format(dir),'w') as f:
-    json.dump(pgmdata,f)
-  print('Writing {}/response_data/webpage...'.format(dir))
-  with open('{}/response_data/webpage'.format(dir),'wb') as f:
-    f.write(webpage)
-  print('Writing {}/response_data/pdata...'.format(dir))
-  with open('{}/response_data/pdata'.format(dir),'wb') as f:
-    f.write(pdata)
-  print('Writing {}/response_data/preview...'.format(dir))
-  with open('{}/response_data/preview'.format(dir),'wb') as f:
-    f.write(preview)
-  print('Writing {}/response_data/asset_mp4...'.format(dir))
-  with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
-    f.write(vdata1)
-  print('Writing {}/response_data/asset_m3u8...'.format(dir))
-  with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
-    f.write(vdata2)
-  print('Writing {}/ts/master.m3u8...'.format(dir))
-  with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
-    f.write(vdata3)
-  print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
-  with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
-    f.write(vdata4)
-  print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
-  with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
-    f.write(cryptokey)
+
+if args.prevdir != '' and (args.test or args.dryrun):
+  print(json.dumps(pgmdata,indent=2))
 
 #  # Combine TS files, if required
 #  if copycmd[0] == 'ffmpeg':
@@ -525,8 +550,3 @@ else:
 #        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
 #          out.write(inp.read())
 #
-  # Run commands
-  for cmd in commands:
-    #print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
-    subprocess.run(cmd,capture_output=False,check=True)
-
