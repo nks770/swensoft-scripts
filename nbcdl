@@ -67,13 +67,6 @@ def import_m3u(m3ufile):
   return m3uout
 
 
-def string_escape(s, encoding='utf-8'):
-    return (s.encode('latin1')         # To bytes, required by 'unicode-escape'
-             .decode('unicode-escape') # Perform the actual octal-escaping decode
-             .encode('latin1')         # 1:1 mapping back to bytes
-             .decode(encoding))        # Decode original encoding
-
-
 def clean_bracket(s):
   b = 0
   for i in range(len(s)):
@@ -108,6 +101,7 @@ except IndexError:
 if args.prevdir != '':
   with open('{}/metadata.json'.format(args.prevdir),'r') as j:
     pgmdata = json.load(j)
+    dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
 
 else:
   # Verify provided URL
@@ -422,7 +416,7 @@ else:
       req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
       with urllib.request.urlopen(req) as response:
         cryptokey = response.read()
-      pgmdata['data']['m3u']['encryption']['key']=(' '.join('{:02x}'.format(x) for x in cryptokey))
+      pgmdata['data']['m3u']['encryption']['key']=(''.join('{:02x}'.format(x) for x in cryptokey))
   
     pgmdata['data']['m3u']['playlist'] = []
     for ts in xdata4:
@@ -466,8 +460,7 @@ else:
     commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
     for ts in pgmdata['data']['m3u']['playlist']:
       commands.extend([['wget','--user-agent={}'.format(user_agent),ts['url'],'-O','{}/ts/{}'.format(dir,ts['file'])]])
-    #copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
-    copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-copy','{}.mp4'.format(dir)]
+    copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
     cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,pgmdata['guid'])]
   
   if pgmdata['data']['mp4'] != None:
@@ -480,12 +473,12 @@ else:
   if pgmdata['thumbnail'] != None:
     commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
   
-  if len(copycmd)>0:
-    commands.extend([copycmd])
-  if len(cleancmd)>0:
-    commands.extend([cleancmd])
+  #if len(copycmd)>0:
+  #  commands.extend([copycmd])
+  #if len(cleancmd)>0:
+  #  commands.extend([cleancmd])
   
-  commands.extend([archive,rmcmd])
+  #commands.extend([archive,rmcmd])
   
   if file_exists and not args.force:
     commands = []
@@ -493,7 +486,7 @@ else:
     quit()
   
   if args.dryrun:
-    for cmd in commands:
+    for cmd in commands.extend(copycmd,cleancmd,archive,rmcmd):
       print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
     quit()
   
@@ -512,8 +505,8 @@ else:
     print('Writing {}/response_data/webpage...'.format(dir))
     with open('{}/response_data/webpage'.format(dir),'wb') as f:
       f.write(webpage)
-    print('Writing {}/response_data/pdata...'.format(dir))
-    with open('{}/response_data/pdata'.format(dir),'wb') as f:
+    print('Writing {}/response_data/player...'.format(dir))
+    with open('{}/response_data/player'.format(dir),'wb') as f:
       f.write(pdata)
     print('Writing {}/response_data/preview...'.format(dir))
     with open('{}/response_data/preview'.format(dir),'wb') as f:
@@ -550,3 +543,26 @@ if args.prevdir != '' and (args.test or args.dryrun):
 #        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
 #          out.write(inp.read())
 #
+Path('{}/.crypto'.format(dir)).mkdir(parents=True,exist_ok=True)
+decryptcmd = []
+for ts in pgmdata['data']['m3u']['playlist']:
+  with open('{}/.crypto/{}.enc'.format(dir,ts['file']),'wb') as enc:
+    with open('{}/ts/{}'.format(dir,ts['file']),'rb') as src:
+      s = src.read()
+      # Drop the first 16 bytes from every ts file
+      enc.write(s[16:])
+      # But save the first 16 bytes since that is the IV for the decryption
+      ts['iv']=(''.join('{:02x}'.format(x) for x in s[:16]))
+  decryptcmd.extend([['openssl','aes-128-cbc','-d','-in','{}/.crypto/{}.enc'.format(dir,ts['file']),'-out','{}/.crypto/{}'.format(dir,ts['file']),'-nosalt','-K',pgmdata['data']['m3u']['encryption']['key'].replace(' ',''),'-iv',ts['iv']]])
+for cmd in decryptcmd:
+  print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+  subprocess.run(cmd,capture_output=False,check=True)
+
+# Combine
+with open('{}/{}.ts'.format(dir,pgmdata['guid']),'wb') as out:
+  for ts in pgmdata['data']['m3u']['playlist']:
+    with open('{}/.crypto/{}'.format(dir,ts['file']),'rb') as inp:
+      out.write(inp.read())
+copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
+subprocess.run(copycmd,capture_output=False,check=True)
+#Path('{}/.crypto'.format(dir)).unlink()
