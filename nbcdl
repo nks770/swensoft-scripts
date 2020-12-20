@@ -90,7 +90,9 @@ parser = argparse.ArgumentParser(description='Download/archive an NBC video stre
 parser.add_argument('url',metavar='url',nargs=1,default='',
                     help='URL of video to download.')
 parser.add_argument('-t','--test', action='store_true', dest='test',
-                    help='Test mode, do not actually save any files.')
+                    help='Test mode, only test the URL and display the JSON.')
+parser.add_argument('-d','--dryfun', action='store_true', dest='dryrun',
+                    help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
                     help='Overwrite data if already exists.')
 args = parser.parse_args()
@@ -144,7 +146,7 @@ if type == 'nbcnews':
   pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
   pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
   pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
-  pgmdata['thumb'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
+  pgmdata['thumbnail'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
 
   # Get URL for closed captions (SRT) 
   try:
@@ -270,12 +272,12 @@ if type == 'nbc':
 
   # Thumbnail image URL
   try:
-    pgmdata['thumb'] = ldjson['video']['thumbnailUrl']
+    pgmdata['thumbnail'] = ldjson['video']['thumbnailUrl']
   except KeyError:
     try:
-      pgmdata['thumb'] = preload_pages['metadata']['image']
+      pgmdata['thumbnail'] = preload_pages['metadata']['image']
     except KeyError:
-      pgmdata['thumb'] = psoup.find('meta',attrs={'property':'og:image'})['content']
+      pgmdata['thumbnail'] = psoup.find('meta',attrs={'property':'og:image'})['content']
 
   # Get the closed captions file
   pgmdata['captions'] = None
@@ -396,7 +398,6 @@ try:
   for ts in xdata4:
     tt = {}
     #tt['url'] = urllib.request.urlopen(ts['url']).geturl()
-    #tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
     tt['url'] = ts['url']
     tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
     pgmdata['data']['m3u']['playlist'].extend([tt])
@@ -405,28 +406,24 @@ except (urllib.error.HTTPError,IndexError) as e:
   pgmdata['data']['m3u'] = None
   
 #print(json.dumps(xdata4,indent=2))
+if args.test or args.dryrun:
+  print(json.dumps(pgmdata,indent=2))
+if args.test:
+  quit()
 
-# Assemble final program data
-print(json.dumps(pgmdata,indent=2))
-quit()
-
-dir='{}_{}'.format(pgm_date,link[4])
+dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
 
 file_exists = False
 if Path('.archive/{}.zip'.format(dir)).is_file() or Path('{}.mp4'.format(dir)).is_file():
   file_exists = True
 
 commands = []
-if not args.test:
-  if file_exists:
-    if args.force:
-      if Path('.archive/{}.zip'.format(dir)).is_file():
-        commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
-      if Path('{}.mp4'.format(dir)).is_file():
-        commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
-    else:
-      print("Nothing to do.")
-      quit()
+if file_exists:
+  if args.force:
+    if Path('.archive/{}.zip'.format(dir)).is_file():
+      commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
+    if Path('{}.mp4'.format(dir)).is_file():
+      commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
 
 # Create list of shell commands
 copycmd = []
@@ -434,21 +431,24 @@ cleancmd = []
 archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
 rmcmd = ['rm','-rf',dir]
 
-if pgmdata['master_url'] != None:
-  commands.extend([['wget',pgmdata['master_url'],'-O','{}/ts/master.m3u8'.format(dir)]])
-  commands.extend([['wget',m3uitem['url'],'-O','{}/ts/{}'.format(dir,pgmdata['m3u8']['playlist'])]])
-  for tsfile in m3uindex:
-    commands.extend([['wget',tsfile['url'],'-O','{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2])]])
-  copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
-  cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,guid)]
+if pgmdata['data']['m3u'] != None:
+  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['master'],'-O','{}/ts/master.m3u8'.format(dir)]])
+  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
+  for ts in pgmdata['data']['m3u']['playlist']:
+    commands.extend([['wget','--user-agent={}'.format(user_agent),ts['url'],'-O','{}/ts/{}'.format(dir,ts['file'])]])
+  #copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,guid),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
+  copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-copy','{}.mp4'.format(dir)]
+  cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,pgmdata['guid'])]
 
-if pgmdata['mp4_url'] != None:
-  commands.extend([['wget',pgmdata['mp4_url'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['mp4_url'])[2])]])
-  copycmd = ['cp','-av','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['mp4_url'])[2]),'{}.mp4'.format(dir)]
+if pgmdata['data']['mp4'] != None:
+  commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['mp4']['url'],'-O','{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])]])
+  copycmd = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
   cleancmd = []
 
-if pgmdata['captions_url'] != None:
-  commands.extend([['wget',pgmdata['captions_url'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['captions_url'])[2])]])
+if pgmdata['captions'] != None:
+  commands.extend([['wget',pgmdata['captions'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['captions'])[2])]])
+if pgmdata['thumbnail'] != None:
+  commands.extend([['wget',pgmdata['thumbnail'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['thumbnail'])[2])]])
 
 if len(copycmd)>0:
   commands.extend([copycmd])
@@ -457,41 +457,62 @@ if len(cleancmd)>0:
 
 commands.extend([archive,rmcmd])
 
-if args.test:
-  print(json.dumps(pgmdata,indent=2))
+if file_exists and not args.force:
+  commands = []
+  print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+  quit()
 
+if args.dryrun:
   for cmd in commands:
     print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+  quit()
 
 else:
+
   # Create directories
   Path('.archive').mkdir(parents=True,exist_ok=True)
   Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
-  if pgmdata['master_url'] != None:
+  if pgmdata['data']['m3u'] != None:
     Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
 
   # Write data
-  print('Writing {}/pgmdata.json...'.format(dir))
-  with open('{}/pgmdata.json'.format(dir),'w') as f:
+  print('Writing {}/metadata.json...'.format(dir))
+  with open('{}/metadata.json'.format(dir),'w') as f:
     json.dump(pgmdata,f)
   print('Writing {}/response_data/webpage...'.format(dir))
   with open('{}/response_data/webpage'.format(dir),'wb') as f:
     f.write(webpage)
+  print('Writing {}/response_data/pdata...'.format(dir))
+  with open('{}/response_data/pdata'.format(dir),'wb') as f:
+    f.write(pdata)
+  print('Writing {}/response_data/preview...'.format(dir))
+  with open('{}/response_data/preview'.format(dir),'wb') as f:
+    f.write(preview)
   print('Writing {}/response_data/asset_mp4...'.format(dir))
   with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
     f.write(vdata1)
   print('Writing {}/response_data/asset_m3u8...'.format(dir))
   with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
     f.write(vdata2)
+  print('Writing {}/ts/master.m3u8...'.format(dir))
+  with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
+    f.write(vdata3)
+  print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
+  with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
+    f.write(vdata4)
+  print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
+  with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
+    f.write(cryptokey)
 
-  # Combine TS files, if required
-  if copycmd[0] == 'ffmpeg':
-    with open('{}/{}.ts'.format(guid),'wb') as out:
-      for ts['url'] in m3uindex:
-        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
-          out.write(inp.read())
-
+#  # Combine TS files, if required
+#  if copycmd[0] == 'ffmpeg':
+#    with open('{}/{}.ts'.format(guid),'wb') as out:
+#      for ts['url'] in m3uindex:
+#        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
+#          out.write(inp.read())
+#
   # Run commands
   for cmd in commands:
     #print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
     subprocess.run(cmd,capture_output=False,check=True)
+
