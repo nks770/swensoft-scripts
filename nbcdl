@@ -34,8 +34,11 @@ def import_m3u(m3ufile):
     p1 = re.split(r'^#(.+):(.+)$',line)
     p2 = re.split(r'^#(.+):([\d\.]+),*$',line)
     p3 = re.split(r'^#(.+):(\d+),*$',line)
+    p4 = re.split(r'^\#EXT-X-KEY:([^\=]+)=([^\,]+),([^\=]+)=\"?([^\"]+)\"?',line)
     if line in ('#EXTM3U' '#EXT-X-ENDLIST') or line.strip() == "":
       continue
+    elif line[:10] == "#EXT-X-KEY":
+      item = {'EXT-X-KEY':{p4[1]:p4[2],p4[3]:p4[4]}}
     elif len(p3)==4:
       try:
         item[p3[1]] = int(p3[2])
@@ -319,6 +322,7 @@ try:
     pgmdata['data']['mp4']['width'] = None
     pgmdata['data']['mp4']['height'] = None
 except (urllib.error.HTTPError, IndexError) as e:
+#  print(xdata1[0]['src'])
   pgmdata['data']['mp4'] = None
 
 
@@ -342,57 +346,69 @@ except IndexError:
   pass
 try:
   pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
+
+  # Download master.m3u8
+  #print(pgmdata['data']['m3u']['master'])
+  req = urllib.request.Request(pgmdata['data']['m3u']['master'], data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+    vdata3 = response.read()
+  #print(vdata3.decode('utf-8'))
+  xdata3 = import_m3u(vdata3)
+  xdata3.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
+  #print(json.dumps(xdata3,indent=2))
+  pgmdata['data']['m3u']['index'] = xdata3[0]['url']
+  pgmdata['data']['m3u']['indexfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['index'])[2]
+  #print(json.dumps(xdata3[0],indent=2))
+  try:
+    resolution=re.split(r'(\d+)x(\d+)',xdata3[0]['EXT-X-STREAM-INF']['RESOLUTION'])
+    pgmdata['data']['m3u']['width'] = int(resolution[1])
+    pgmdata['data']['m3u']['height'] = int(resolution[2])
+  except KeyError:
+    pgmdata['data']['m3u']['width'] = None
+    pgmdata['data']['m3u']['height'] = None
+  
+  
+  # Open index.m3u8
+  req = urllib.request.Request(pgmdata['data']['m3u']['index'], data=None, headers=headers)
+  with urllib.request.urlopen(req) as response:
+    vdata4 = response.read()
+  #print(vdata4.decode('utf-8'))
+  xdata4 = import_m3u(vdata4)
+  try:
+    pgmdata['data']['m3u']['encryption'] = {}
+    pgmdata['data']['m3u']['encryption']['method'] = xdata4[0]['EXT-X-KEY']['METHOD']
+    pgmdata['data']['m3u']['encryption']['keyurl'] = xdata4[0]['EXT-X-KEY']['URI']
+    pgmdata['data']['m3u']['encryption']['keyfile'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['encryption']['keyurl'])[2]
+  except KeyError:
+    pgmdata['data']['m3u']['encryption'] = None
+  for i in range(1,len(xdata4)):
+    if 'EXT-X-KEY' in xdata4[i].keys():
+      raise Exception("Possibly multiple EXT-X-KEY groups detected.")
+  
+  # Get the M3U encryption key
+  if pgmdata['data']['m3u']['encryption'] != None:
+    req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      cryptokey = response.read()
+    pgmdata['data']['m3u']['encryption']['key']=(' '.join('{:02x}'.format(x) for x in cryptokey))
+
+  pgmdata['data']['m3u']['playlist'] = []
+  for ts in xdata4:
+    tt = {}
+    #tt['url'] = urllib.request.urlopen(ts['url']).geturl()
+    #tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
+    tt['url'] = ts['url']
+    tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
+    pgmdata['data']['m3u']['playlist'].extend([tt])
+  
 except (urllib.error.HTTPError,IndexError) as e:
   pgmdata['data']['m3u'] = None
-
-
-# Download master.m3u8
-#print(pgmdata['data']['m3u']['master'])
-req = urllib.request.Request(pgmdata['data']['m3u']['master'], data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
-  vdata3 = response.read()
-#print(vdata3.decode('utf-8'))
-xdata3 = import_m3u(vdata3)
-xdata3.sort(key=lambda x: x['EXT-X-STREAM-INF']['BANDWIDTH'],reverse=True)
-#print(json.dumps(xdata3,indent=2))
-pgmdata['data']['m3u']['index'] = xdata3[0]['url']
-pgmdata['data']['m3u']['indexfile'] = re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['data']['m3u']['index'])[2]
-#print(json.dumps(xdata3[0],indent=2))
-try:
-  resolution=re.split(r'(\d+)x(\d+)',xdata3[0]['EXT-X-STREAM-INF']['RESOLUTION'])
-  pgmdata['data']['m3u']['width'] = int(resolution[1])
-  pgmdata['data']['m3u']['height'] = int(resolution[2])
-except KeyError:
-  pgmdata['data']['m3u']['width'] = None
-  pgmdata['data']['m3u']['height'] = None
-
-
-# Open index.m3u8
-req = urllib.request.Request(pgmdata['data']['m3u']['index'], data=None, headers=headers)
-with urllib.request.urlopen(req) as response:
-  vdata4 = response.read()
-#print(vdata4.decode('utf-8'))
-xdata4 = import_m3u(vdata4)
-print(json.dumps(xdata4,indent=2))
+  
+#print(json.dumps(xdata4,indent=2))
 
 # Assemble final program data
 print(json.dumps(pgmdata,indent=2))
 quit()
-
-
-#
-## Download index.m3u8
-#headers = {'User-Agent': user_agent}
-#req = urllib.request.Request(m3uitem['url'], data=None, headers=headers)
-#with urllib.request.urlopen(req) as response:
-#  index_m3u8 = response.read().decode('utf-8').split('\n')
-#m3uindex = import_m3u(index_m3u8)
-##print(json.dumps(m3uindex,indent=2))
-#
-
-
-#pgmdata['m3u8']=m3uitem
-#pgmdata['m3u8']['playlist']=re.split(r'^(.+)\/([^\?]+)(.*)$',m3uitem['url'])[2]
 
 dir='{}_{}'.format(pgm_date,link[4])
 
