@@ -95,6 +95,8 @@ parser.add_argument('-d','--dryfun', action='store_true', dest='dryrun',
                     help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
                     help='Overwrite data if already exists.')
+parser.add_argument('-r','--restart', action='store_true', dest='restart',
+                    help='Restart mode, skip the download and only do the finalization steps.')
 args = parser.parse_args()
 url = args.url[0]
 
@@ -146,13 +148,20 @@ if type == 'nbcnews':
   pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
   pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
   pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
-  pgmdata['thumbnail'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
+  try:
+    pgmdata['thumbnail'] = {}
+    pgmdata['thumbnail']['url'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
+    pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
+  except KeyError:
+    pgmdata['thumbnail'] = None
 
   # Get URL for closed captions (SRT) 
   try:
+    pgmdata['captions'] = {}
     closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
-    pgmdata['captions'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
-  except:
+    pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
+    pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
+  except KeyError:
     pgmdata['captions'] = None
 
   # Video asset URLs
@@ -272,31 +281,36 @@ if type == 'nbc':
 
   # Thumbnail image URL
   try:
-    pgmdata['thumbnail'] = ldjson['video']['thumbnailUrl']
-  except KeyError:
+    pgmdata['thumbnail'] = {}
     try:
-      pgmdata['thumbnail'] = preload_pages['metadata']['image']
+      pgmdata['thumbnail']['url'] = ldjson['video']['thumbnailUrl']
     except KeyError:
-      pgmdata['thumbnail'] = psoup.find('meta',attrs={'property':'og:image'})['content']
+      try:
+        pgmdata['thumbnail']['url'] = preload_pages['metadata']['image']
+      except KeyError:
+        pgmdata['thumbnail']['url'] = psoup.find('meta',attrs={'property':'og:image'})['content']
+    pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
+  except KeyError:
+    pgmdata['thumbnail'] = None
 
   # Get the closed captions file
-  pgmdata['captions'] = None
-  for cap in preview_json['captions']:
-    if cap['lang'] == 'en':
-      pgmdata['captions'] = cap['src']
+  try:
+    pgmdata['captions'] = {}
+    for cap in preview_json['captions']:
+      if cap['lang'] == 'en':
+        pgmdata['captions']['url'] = cap['src']
+    pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
+  except KeyError:
+    pgmdata['captions'] = None
 
   # Video asset URLs
   assetUrl = re.split(r'^([^\?]+)\?(.+)$',plink2a)
   if len(assetUrl)>2:
     pgmdata['asset'] = {'base':assetUrl[1],
                   'ext': assetUrl[2]}
-#                  'mp4': 'format=SMIL&formats=MPEG4',
-#                  'm3u': 'format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'}
   else:
     pgmdata['asset'] = {'base':plink2a,
                   'ext': None}
-#                  'mp4': 'format=SMIL&formats=MPEG4',
-#                  'm3u': 'format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'}
 
   
 pgmdata['data'] = {}
@@ -446,9 +460,9 @@ if pgmdata['data']['mp4'] != None:
   cleancmd = []
 
 if pgmdata['captions'] != None:
-  commands.extend([['wget',pgmdata['captions'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['captions'])[2])]])
+  commands.extend([['wget',pgmdata['captions']['url'],'-O','{}/{}'.format(dir,pgmdata['captions']['filename'])]])
 if pgmdata['thumbnail'] != None:
-  commands.extend([['wget',pgmdata['thumbnail'],'-O','{}/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',pgmdata['thumbnail'])[2])]])
+  commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,,pgmdata['thumbnail']['filename'])]])
 
 if len(copycmd)>0:
   commands.extend([copycmd])
