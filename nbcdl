@@ -161,8 +161,8 @@ else:
     try:
       pgmdata['thumbnail'] = {}
       pgmdata['thumbnail']['url'] = jsondata['props']['initialState']['video']['current']['primaryImage']['url']['primary']
-      pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
-    except KeyError:
+      pgmdata['thumbnail']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['thumbnail']['url'])[2]
+    except (KeyError, IndexError) as e:
       pgmdata['thumbnail'] = None
   
     # Get URL for closed captions (SRT) 
@@ -170,8 +170,8 @@ else:
       pgmdata['captions'] = {}
       closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
       pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
-      pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
-    except KeyError:
+      pgmdata['captions']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['captions']['url'])[2]
+    except (KeyError, IndexError) as e:
       pgmdata['captions'] = None
   
     # Video asset URLs
@@ -299,8 +299,8 @@ else:
           pgmdata['thumbnail']['url'] = preload_pages['metadata']['image']
         except KeyError:
           pgmdata['thumbnail']['url'] = psoup.find('meta',attrs={'property':'og:image'})['content']
-      pgmdata['thumbnail']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['thumbnail']['url'])[2]
-    except KeyError:
+      pgmdata['thumbnail']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['thumbnail']['url'])[2]
+    except (KeyError, IndexError) as e:
       pgmdata['thumbnail'] = None
   
     # Get the closed captions file
@@ -309,8 +309,8 @@ else:
       for cap in preview_json['captions']:
         if cap['lang'] == 'en':
           pgmdata['captions']['url'] = cap['src']
-      pgmdata['captions']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['captions']['url'])[2]
-    except KeyError:
+      pgmdata['captions']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['captions']['url'])[2]
+    except (KeyError, IndexError) as e:
       pgmdata['captions'] = None
   
     # Video asset URLs
