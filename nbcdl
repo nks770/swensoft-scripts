@@ -438,58 +438,40 @@ def CreateDownload(url):
     file_exists = True
   
   commands = []
-  if file_exists:
-    if args.force:
-      if Path('.archive/{}.zip'.format(dir)).is_file():
-        commands.extend([['rm','-fv','.archive/{}.zip'.format(dir)]])
-      if Path('{}.mp4'.format(dir)).is_file():
-        commands.extend([['rm','-fv','{}.mp4'.format(dir)]])
-  
-  # Create list of shell commands
-  copycmd = []
-  cleancmd = []
-  archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
-  rmcmd = ['rm','-rf',dir]
   
   if pgmdata['data']['m3u'] != None:
-    commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['master'],'-O','{}/ts/master.m3u8'.format(dir)]])
-    commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
+    #commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['master'],'-O','{}/ts/master.m3u8'.format(dir)]])
+    #commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['m3u']['index'],'-O','{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile'])]])
     for ts in pgmdata['data']['m3u']['playlist']:
       commands.extend([['wget','--user-agent={}'.format(user_agent),ts['url'],'-O','{}/ts/{}'.format(dir,ts['file'])]])
-    copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
-    cleancmd = ['rm','-fv','{}/{}.ts'.format(dir,pgmdata['guid'])]
   
   if pgmdata['data']['mp4'] != None:
     commands.extend([['wget','--user-agent={}'.format(user_agent),pgmdata['data']['mp4']['url'],'-O','{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])]])
-    copycmd = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
-    cleancmd = []
   
   if pgmdata['captions'] != None:
     commands.extend([['wget',pgmdata['captions']['url'],'-O','{}/{}'.format(dir,pgmdata['captions']['filename'])]])
+
   if pgmdata['thumbnail'] != None:
     commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
-  
-  #if len(copycmd)>0:
-  #  commands.extend([copycmd])
-  #if len(cleancmd)>0:
-  #  commands.extend([cleancmd])
-  
-  #commands.extend([archive,rmcmd])
   
   if file_exists and not args.force:
     commands = []
     print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
-    quit()
+    return None
   
+  if Path('{}/metadata.json'.format(dir)).is_file():
+    with open('{}/metadata.json'.format(dir),'r') as j:
+      pgmdata = json.load(j)
+    print("{}Files already downloaded. Skipping download.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+    return pgmdata
+
   if args.dryrun:
     for cmd in commands.extend(copycmd,cleancmd,archive,rmcmd):
       print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
-    quit()
+    return None
   
   else:
-  
     # Create directories
-    Path('.archive').mkdir(parents=True,exist_ok=True)
     Path('{}/response_data'.format(dir)).mkdir(parents=True,exist_ok=True)
     if pgmdata['data']['m3u'] != None:
       Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
@@ -531,40 +513,76 @@ def CreateDownload(url):
     return pgmdata
 
 def ProcessData(pgmdata):
-  #if args.prevdir != '' and (args.test or args.dryrun):
-  #  print(json.dumps(pgmdata,indent=2))
-  
-  #  # Combine TS files, if required
-  #  if copycmd[0] == 'ffmpeg':
-  #    with open('{}/{}.ts'.format(guid),'wb') as out:
-  #      for ts['url'] in m3uindex:
-  #        with open('{}/ts/{}'.format(dir,re.split(r'^(.+)\/([^\?]+)(.*)$',tsfile['url'])[2]),'rb') as inp:
-  #          out.write(inp.read())
-  #
+  # Get the directory from the pgmdata
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
-  Path('{}/.crypto'.format(dir)).mkdir(parents=True,exist_ok=True)
-  decryptcmd = []
-  for ts in pgmdata['data']['m3u']['playlist']:
-    with open('{}/.crypto/{}.enc'.format(dir,ts['file']),'wb') as enc:
-      with open('{}/ts/{}'.format(dir,ts['file']),'rb') as src:
-        s = src.read()
-        # Drop the first 16 bytes from every ts file
-        enc.write(s[16:])
-        # But save the first 16 bytes since that is the IV for the decryption
-        ts['iv']=(''.join('{:02x}'.format(x) for x in s[:16]))
-    decryptcmd.extend([['openssl','aes-128-cbc','-d','-in','{}/.crypto/{}.enc'.format(dir,ts['file']),'-out','{}/.crypto/{}'.format(dir,ts['file']),'-nosalt','-K',pgmdata['data']['m3u']['encryption']['key'].replace(' ',''),'-iv',ts['iv']]])
-  for cmd in decryptcmd:
-    print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
-    subprocess.run(cmd,capture_output=False,check=True)
+
+  # Exit subroutine if there is no video data available
+  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
+    print("{}No mp4 of m3u data found. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+    return None
+
+  if not Path('{}.mp4'.format(dir)).is_file() or args.force:
+
+    if args.force:
+      Path('{}.mp4'.format(dir)).unlink(missing_ok=True)
+
+    if pgmdata['data']['mp4'] != None:
+      copy = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
+      print('{}{}{}'.format(bcolors.OKGREEN,copy,bcolors.ENDC))
+      subprocess.run(copy,capture_output=False,check=True)
   
-  # Combine
-  with open('{}/{}.ts'.format(dir,pgmdata['guid']),'wb') as out:
-    for ts in pgmdata['data']['m3u']['playlist']:
-      with open('{}/.crypto/{}'.format(dir,ts['file']),'rb') as inp:
-        out.write(inp.read())
-  copycmd = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
-  subprocess.run(copycmd,capture_output=False,check=True)
-  #Path('{}/.crypto'.format(dir)).unlink()
+    elif pgmdata['data']['m3u'] != None:
+      if pgmdata['data']['m3u']['encryption'] != None:
+        # Construct commands to decrypt an encrypted HLS stream
+        Path('{}/.crypto'.format(dir)).mkdir(parents=True,exist_ok=True)
+        decryptcmd = []
+        for ts in pgmdata['data']['m3u']['playlist']:
+          with open('{}/.crypto/{}.enc'.format(dir,ts['file']),'wb') as enc:
+            with open('{}/ts/{}'.format(dir,ts['file']),'rb') as src:
+              s = src.read()
+              # Drop the first 16 bytes from every ts file
+              enc.write(s[16:])
+              # But save the first 16 bytes, which is the IV needed for decryption
+              ts['iv']=(''.join('{:02x}'.format(x) for x in s[:16]))
+          decryptcmd.extend([['openssl','aes-128-cbc','-d','-in','{}/.crypto/{}.enc'.format(dir,ts['file']),'-out','{}/.crypto/{}'.format(dir,ts['file']),'-nosalt','-K',pgmdata['data']['m3u']['encryption']['key'].replace(' ',''),'-iv',ts['iv']]])
+      
+        # Run the decrypt commands
+        for cmd in decryptcmd:
+          print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+          subprocess.run(cmd,capture_output=False,check=True)
+        
+        # Combine decrypted files
+        with open('{}/{}.ts'.format(dir,pgmdata['guid']),'wb') as out:
+          for ts in pgmdata['data']['m3u']['playlist']:
+            with open('{}/.crypto/{}'.format(dir,ts['file']),'rb') as inp:
+              out.write(inp.read())
+        subprocess.run(['rm','-rf','{}/.crypto'.format(dir)],capture_output=False,check=True)
+  
+      else:
+        # Combine raw ts files that are not encrypted
+        with open('{}/{}.ts'.format(dir,pgmdata['guid']),'wb') as out:
+          for ts in pgmdata['data']['m3u']['playlist']:
+            with open('{}/ts/{}'.format(dir,ts['file']),'rb') as inp:
+              out.write(inp.read())
+  
+      ffmpeg = ['ffmpeg','-i','{}/{}.ts'.format(dir,pgmdata['guid']),'-acodec','copy','-vcodec','copy','{}.mp4'.format(dir)]
+      subprocess.run(ffmpeg,capture_output=False,check=True)
+      Path('{}/{}.ts'.format(dir,pgmdata['guid'])).unlink()
+
+  if not Path('.archive/{}.zip'.format(dir)).is_file() or args.force:
+    if args.force:
+      Path('.archive/{}.zip'.format(dir)).unlink(missing_ok=True)
+
+    archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
+    Path('.archive').mkdir(parents=True,exist_ok=True)
+    subprocess.run(archive,capture_output=False,check=True)
+    subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
+
+
+
+####################
+### MAIN PROGRAM ###
+####################
 
 # If this is a restart run, then load the JSON.
 if args.prevdir != '':
