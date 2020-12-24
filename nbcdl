@@ -1,6 +1,7 @@
 #!/bin/env python3
 
 import argparse
+import copy
 import json
 import demjson
 import re
@@ -88,14 +89,12 @@ parser.add_argument('-d','--dryfun', action='store_true', dest='dryrun',
                     help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
                     help='Overwrite data if already exists.')
+parser.add_argument('-q','--quick', action='store_true', dest='qcheck',
+                    help='Quick check mode quickly checks if the MP4 was already downloaded without going online.')
 parser.add_argument('-r','--restart', metavar='DIRECTORY', dest='prevdir',default='',
                     help='Restart mode, skip the download and only do the finalization steps.')
 args = parser.parse_args()
 
-try:
-  url = args.url[0]
-except IndexError:
-  url = ''
 
 
 def CreateDownload(url):
@@ -104,11 +103,13 @@ def CreateDownload(url):
     link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',url)
     type = 'nbcnews'
     clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
+    quick_name = link[4]
   except IndexError:
     try:
       link = re.split(r'(?x)^(?:https)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',url)
       type = 'nbc'
       clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
+      quick_name = link[5]
     except IndexError:
       return None
 #      if url != '':
@@ -121,7 +122,13 @@ def CreateDownload(url):
     raise Exception("URL parsing error!")
   
   #print(link)
-  
+
+  if args.qcheck:
+    qcheck = list(Path('.').glob('*{}*mp4'.format(quick_name))) 
+    if len(qcheck)>0:
+      print(qcheck)
+      return None
+
   # Download webpage
   req = urllib.request.Request(clean_url, data=None, headers=headers)
   with urllib.request.urlopen(req) as response:
@@ -427,9 +434,12 @@ def CreateDownload(url):
     
   #print(json.dumps(xdata4,indent=2))
   if args.test or args.dryrun:
-    print(json.dumps(pgmdata,indent=2))
+    pgmdata_ = copy.deepcopy(pgmdata)
+    if pgmdata_['data']['m3u'] != None:
+      pgmdata_['data']['m3u']['playlist'] = None
+    print(json.dumps(pgmdata_,indent=2))
   if args.test:
-    quit()
+    return None
   
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
   
@@ -584,13 +594,28 @@ def ProcessData(pgmdata):
 ### MAIN PROGRAM ###
 ####################
 
+try:
+  url = args.url[0]
+except IndexError:
+  url = ''
+
 # If this is a restart run, then load the JSON.
 if args.prevdir != '':
   with open('{}/metadata.json'.format(args.prevdir),'r') as j:
     pgmdata = json.load(j)
-else:
-  pgmdata = CreateDownload(url)
+  if not (args.test or args.dryrun):
+    ProcessData(pgmdata)
 
-if not (args.test or args.dryrun):
-  ProcessData(pgmdata)
+elif Path(url).is_file():
+  with open(url,'r') as u:
+    urlfile = u.read().splitlines()
+
+elif len(url)>1:
+  urlfile = [url]
+
+for u in urlfile:
+  print('{}{}{}'.format(bcolors.OKBLUE,u,bcolors.ENDC))
+  pgmdata = CreateDownload(u)
+  if not (args.test or args.dryrun):
+    ProcessData(pgmdata)
 
