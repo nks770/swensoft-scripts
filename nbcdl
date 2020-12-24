@@ -83,16 +83,22 @@ def clean_bracket(s):
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
 parser.add_argument('url',metavar='url',nargs='*',default='',
                     help='URL of video to download.')
-parser.add_argument('-t','--test', action='store_true', dest='test',
-                    help='Test mode, only test the URL and display the JSON.')
 parser.add_argument('-d','--dryfun', action='store_true', dest='dryrun',
                     help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
-                    help='Overwrite data if already exists.')
+                    help='Overwrite data folder and output MP4 if already exists.')
+parser.add_argument('-ff','--force-archive', action='store_true', dest='forcearc',
+                    help='Works like "-f" but also purges and overwrites archive files.')
+parser.add_argument('-m','--force-m3u', action='store_true', dest='force_m3u',
+                    help='Force code to transcode M3U even if MP4 is available.')
+parser.add_argument('-n','--nodelete', action='store_true', dest='no_delete',
+                    help='Do not remove temporary files.')
 parser.add_argument('-q','--quick', action='store_true', dest='qcheck',
                     help='Quick check mode quickly checks if the MP4 was already downloaded without going online.')
 parser.add_argument('-r','--restart', metavar='DIRECTORY', dest='prevdir',default='',
                     help='Restart mode, skip the download and only do the finalization steps.')
+parser.add_argument('-t','--test', action='store_true', dest='test',
+                    help='Test mode, only test the URL and display the JSON.')
 args = parser.parse_args()
 
 
@@ -464,12 +470,12 @@ def CreateDownload(url):
   if pgmdata['thumbnail'] != None:
     commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
   
-  if file_exists and not args.force:
+  if file_exists and not (args.force or args.forcearc):
     commands = []
     print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
     return None
   
-  if Path('{}/metadata.json'.format(dir)).is_file() and not args.force:
+  if Path('{}/metadata.json'.format(dir)).is_file() and not (args.force or args.forcearc):
     with open('{}/metadata.json'.format(dir),'r') as j:
       pgmdata = json.load(j)
     print("{}Files already downloaded. Skipping download.{}".format(bcolors.OKGREEN,bcolors.ENDC))
@@ -545,12 +551,12 @@ def ProcessData(pgmdata):
     print("{}No mp4 of m3u data found. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
     return None
 
-  if not Path('{}.mp4'.format(dir)).is_file() or args.force:
+  if not Path('{}.mp4'.format(dir)).is_file() or (args.force or args.forcearc):
 
-    if args.force:
+    if args.force or args.forcearc:
       Path('{}.mp4'.format(dir)).unlink(missing_ok=True)
 
-    if pgmdata['data']['mp4'] != None:
+    if (not args.force_m3u and pgmdata['data']['mp4'] != None) or (args.force_m3u and pgmdata['data']['m3u'] == None):
       copy = ['cp','-av','{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),'{}.mp4'.format(dir)]
       print('{}{}{}'.format(bcolors.OKGREEN,copy,bcolors.ENDC))
       subprocess.run(copy,capture_output=False,check=True)
@@ -593,14 +599,15 @@ def ProcessData(pgmdata):
       subprocess.run(ffmpeg,capture_output=False,check=True)
       Path('{}/{}.ts'.format(dir,pgmdata['guid'])).unlink()
 
-  if not Path('.archive/{}.zip'.format(dir)).is_file() or args.force:
-    if args.force:
+  if not Path('.archive/{}.zip'.format(dir)).is_file() or args.forcearc:
+    if args.forcearc:
       Path('.archive/{}.zip'.format(dir)).unlink(missing_ok=True)
 
     archive = ['zip','-9r','.archive/{}.zip'.format(dir),dir]
     Path('.archive').mkdir(parents=True,exist_ok=True)
     subprocess.run(archive,capture_output=False,check=True)
-    subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
+    if not args.no_delete:
+      subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
 
 
 
@@ -620,16 +627,20 @@ if args.prevdir != '':
   if not (args.test or args.dryrun):
     ProcessData(pgmdata)
 
-elif Path(url).is_file():
-  with open(url,'r') as u:
-    urlfile = u.read().splitlines()
+else:
+  if Path(url).is_file():
+    with open(url,'r') as u:
+      urlfile = u.read().splitlines()
+  
+  elif len(url)>1:
+    urlfile = [url]
 
-elif len(url)>1:
-  urlfile = [url]
-
-for u in urlfile:
-  print('{}{}{}'.format(bcolors.OKBLUE,u,bcolors.ENDC))
-  pgmdata = CreateDownload(u)
-  if not (args.test or args.dryrun):
-    ProcessData(pgmdata)
+  else:
+    urlfile = []
+  
+  for u in urlfile:
+    print('{}{}{}'.format(bcolors.OKBLUE,u,bcolors.ENDC))
+    pgmdata = CreateDownload(u)
+    if not (args.test or args.dryrun):
+      ProcessData(pgmdata)
 
