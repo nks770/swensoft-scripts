@@ -126,7 +126,7 @@ def CreateDownload(url):
   if args.qcheck:
     qcheck = list(Path('.').glob('*{}*mp4'.format(quick_name))) 
     if len(qcheck)>0:
-      print(qcheck)
+      print('{}Found that {} already exits, nothing to do.{}'.format(bcolors.OKGREEN,str(qcheck[0]),bcolors.ENDC))
       return None
 
   # Download webpage
@@ -174,7 +174,7 @@ def CreateDownload(url):
       closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
       pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
       pgmdata['captions']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['captions']['url'])[2]
-    except (KeyError, IndexError) as e:
+    except (KeyError, IndexError, TypeError) as e:
       pgmdata['captions'] = None
   
     # Video asset URLs
@@ -469,7 +469,7 @@ def CreateDownload(url):
     print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
     return None
   
-  if Path('{}/metadata.json'.format(dir)).is_file():
+  if Path('{}/metadata.json'.format(dir)).is_file() and not args.force:
     with open('{}/metadata.json'.format(dir),'r') as j:
       pgmdata = json.load(j)
     print("{}Files already downloaded. Skipping download.{}".format(bcolors.OKGREEN,bcolors.ENDC))
@@ -493,27 +493,37 @@ def CreateDownload(url):
     print('Writing {}/response_data/webpage...'.format(dir))
     with open('{}/response_data/webpage'.format(dir),'wb') as f:
       f.write(webpage)
-    print('Writing {}/response_data/player...'.format(dir))
-    with open('{}/response_data/player'.format(dir),'wb') as f:
-      f.write(pdata)
-    print('Writing {}/response_data/preview...'.format(dir))
-    with open('{}/response_data/preview'.format(dir),'wb') as f:
-      f.write(preview)
+    try:
+      if pdata != None:
+        print('Writing {}/response_data/player...'.format(dir))
+        with open('{}/response_data/player'.format(dir),'wb') as f:
+          f.write(pdata)
+    except UnboundLocalError:
+      pass
+    try:
+      if preview != None:
+        print('Writing {}/response_data/preview...'.format(dir))
+        with open('{}/response_data/preview'.format(dir),'wb') as f:
+          f.write(preview)
+    except UnboundLocalError:
+      pass
     print('Writing {}/response_data/asset_mp4...'.format(dir))
     with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
       f.write(vdata1)
     print('Writing {}/response_data/asset_m3u8...'.format(dir))
     with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
       f.write(vdata2)
-    print('Writing {}/ts/master.m3u8...'.format(dir))
-    with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
-      f.write(vdata3)
-    print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
-    with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
-      f.write(vdata4)
-    print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
-    with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
-      f.write(cryptokey)
+    if pgmdata['data']['m3u'] != None:
+      print('Writing {}/ts/master.m3u8...'.format(dir))
+      with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
+        f.write(vdata3)
+      print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
+      with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
+        f.write(vdata4)
+      if pgmdata['data']['m3u']['encryption'] != None:
+        print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
+        with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
+          f.write(cryptokey)
   
     # Run commands
     for cmd in commands:
@@ -523,6 +533,10 @@ def CreateDownload(url):
     return pgmdata
 
 def ProcessData(pgmdata):
+
+  if pgmdata == None:
+    return None
+
   # Get the directory from the pgmdata
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
 
