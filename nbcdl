@@ -446,6 +446,10 @@ def CreateDownload(url):
     print(json.dumps(pgmdata_,indent=2))
   if args.test:
     return None
+
+  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
+    print('{}No video data available for {}{}'.format(bcolors.FAIL,pgmdata['name'],bcolors.ENDC))
+    return None
   
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
   
