@@ -12,18 +12,23 @@ failures=$(mktemp)
 logfile=$(mktemp)
 emailbody=$(mktemp)
 tmpout=$(mktemp)
+tmperr=$(mktemp)
 
 function get_links() {
   echo "Getting links for ${1} ..."
-  nbcdl -N -s "${2}" -o "${3}" ${4} > ${tmpout} 2>&1
+  nbcdl -N -s "${2}" -o "${3}" ${4} > ${tmpout} 2> ${tmperr}
   retcd=$?
   if [ ${retcd} -eq 90 ] ; then
     echo "${1}" >> ${nolinks}
-    cat ${tmpout} >> ${logfile}
+    head -n 20 ${tmpout} >> ${logfile}
+    tail -n 20 ${tmpout} >> ${logfile}
+    cat ${tmperr} >> ${logfile}
     echo '#################################' >> ${logfile}
   elif [ ${retcd} -gt 0 ] ; then
     echo "${1} (${retcd})" >> ${error}
-    cat ${tmpout} >> ${logfile}
+    head -n 20 ${tmpout} >> ${logfile}
+    tail -n 20 ${tmpout} >> ${logfile}
+    cat ${tmperr} >> ${logfile}
     echo '#################################' >> ${logfile}
   fi
 }
@@ -82,15 +87,19 @@ for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
     if [ -f "url.txt" ] ; then
       echo "PROCESSING ${i} ..."
       echo "PROCESSING ${i} ..." >> ${logfile}
-      nbcdl -S 24 -c -q url.txt > ${tmpout} 2>&1
+      nbcdl -S 24 -c -q url.txt > ${tmpout} 2> ${tmperr}
       retcd=$?
       if [ ${retcd} -eq 91 ] ; then
         echo "${i}" >> ${failures}
-        cat ${tmpout} >> ${logfile}
+        head -n 20 ${tmpout} >> ${logfile}
+        tail -n 20 ${tmpout} >> ${logfile}
+        cat ${tmperr} >> ${logfile}
         echo '#################################' >> ${logfile}
       elif [ ${retcd} -gt 0 ] ; then
         echo "${i} (${retcd})" >> ${error}
-        cat ${tmpout} >> ${logfile}
+        head -n 20 ${tmpout} >> ${logfile}
+        tail -n 20 ${tmpout} >> ${logfile}
+        cat ${tmperr} >> ${logfile}
         echo '#################################' >> ${logfile}
       fi
     fi
@@ -132,5 +141,4 @@ if [ -s ${error} ] ; then
   mail -r ${email_from} -s "${subject}" ${email} < ${emailbody}
 fi
 # Clean up
-cp -av ${logfile} log.txt
-rm -fv ${nolinks} ${error} ${failures} ${logfile} ${emailbody} ${tmpout}
+rm -fv ${nolinks} ${error} ${failures} ${logfile} ${emailbody} ${tmpout} ${tmperr}

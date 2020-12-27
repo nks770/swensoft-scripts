@@ -603,7 +603,15 @@ def CreateDownload(url):
     # Run commands
     for cmd in commands:
       #print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
-      subprocess.run(cmd,capture_output=False,check=True)
+      try:
+        subprocess.run(cmd,capture_output=False,check=True)
+      except subprocess.CalledProcessError:
+        try:
+          # Try a second time
+          subprocess.run(cmd,capture_output=False,check=True)
+        except subprocess.CalledProcessError:
+          # Try one last time
+          subprocess.run(cmd,capture_output=False,check=True)
 
     return pgmdata
 
