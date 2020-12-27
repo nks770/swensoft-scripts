@@ -147,6 +147,8 @@ parser.add_argument('-t','--test', action='store_true', dest='test',
                     help='Test mode, only test the URL and display the JSON.')
 parser.add_argument('-N','--nocolor', action='store_true', dest='nocolor',
                     help='Do not use terminal colors.')
+parser.add_argument('-S','--skip-older-than', metavar='HOURS', dest='skiptime',default='',
+                    help='Skip files older than a specified amount of time.')
 args = parser.parse_args()
 
 # Remove colors from terminal
@@ -944,8 +946,22 @@ if args.prevdir != '':
 
 else:
   if Path(url).is_file():
-    with open(url,'r') as u:
-      urlfile = u.read().splitlines()
+    skip = False
+    mtime = datetime.fromtimestamp(Path(url).stat().st_mtime)
+    age = (datetime.now() - mtime).total_seconds() / 3600.0
+    if args.skiptime:
+      try:
+        if age > float(args.skiptime):
+          print('{}File "{}" is {:,.2f} hours old, skipping processing.{}'.format(bcolors.WARNING,url,age,bcolors.ENDC))
+          skip = True
+      except ValueError:
+        print('{}Invalid data supplied for option "-S"; please specify number of hours.{}'.format(bcolors.WARNING,bcolors.ENDC))
+        skip = False
+    if skip:
+      urlfile = []
+    else:
+      with open(url,'r') as u:
+        urlfile = u.read().splitlines()
   
   elif len(url)>1:
     urlfile = [url]
