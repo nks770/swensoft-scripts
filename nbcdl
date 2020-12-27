@@ -93,6 +93,24 @@ def quarter(mm):
   else:
     return None
 
+def parseUrl(raw_url):
+  try:
+    ld = re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',raw_url)
+    return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
+            'server':ld[1],
+            'name':ld[5],
+            'id':ld[6]}
+  except IndexError:
+    try:
+      ld = re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',raw_url)
+      return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
+              'server':ld[1],
+              'name':ld[5],
+              'id':ld[6]}
+    except IndexError:
+      return None
+
+
 # Parse arguments
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
 parser.add_argument('url',metavar='url',nargs='*',default='',
@@ -123,48 +141,29 @@ args = parser.parse_args()
 
 
 def CreateDownload(url):
-  # Verify provided URL
-  try:
-    link = re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',url)
-    type = 'nbcnews'
-    clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
-    quick_name = link[4]
-  except IndexError:
-    try:
-      link = re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',url)
-      type = 'nbc'
-      clean_url = 'https://{}/{}/{}/{}'.format(link[1],link[2],link[3],link[4])
-      quick_name = link[5]
-    except IndexError:
-      return None
-#      if url != '':
-#        raise Exception("Unable to recognize that kind of URL! Maybe that website isn't being handled by this script.")
-#      else:
-#        parser.print_help()
-#        quit()
-  
-  if len(link)<8:
-    raise Exception("URL parsing error!")
-  
-  #print(link)
 
+  # Verify provided URL
+  link = parseUrl(url)
+  if link==None:
+    return None
+  
   if args.qcheck:
-    qcheck = list(Path('.').glob('*{}*mp4'.format(quick_name))) 
+    qcheck = list(Path('.').glob('*{}*mp4'.format(link['name']))) 
     if len(qcheck)>0:
       print('{}Found that {} already exits, nothing to do.{}'.format(bcolors.OKGREEN,str(qcheck[0]),bcolors.ENDC))
       return None
 
   # Download webpage
-  req = urllib.request.Request(clean_url, data=None, headers=headers)
+  req = urllib.request.Request(link['url'], data=None, headers=headers)
   with urllib.request.urlopen(req) as response:
     webpage = response.read()
     soup = BeautifulSoup(webpage,features='html.parser')
   
   # Initialize program data dictionary
   pgmdata = {}
-  pgmdata['webpage']=clean_url
+  pgmdata['webpage']=link['url']
   
-  if type == 'nbcnews':
+  if 'nbcnews.com' in link['server']:
     # Get NEXT_DATA (JSON)
     nextdata = soup.find(attrs={'id':'__NEXT_DATA__'}).string
     jsondata = json.loads(nextdata)
@@ -182,7 +181,7 @@ def CreateDownload(url):
     # Determine the date code for the program
     pgmdata['datecode'] = broadcastDateCT.strftime('%y%m%d')
   
-    pgmdata['name'] = link[4]
+    pgmdata['name'] = link['name']
     pgmdata['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
     pgmdata['title'] = jsondata['props']['initialState']['video']['current']['headline']['primary']
     pgmdata['desc'] = jsondata['props']['initialState']['video']['current']['description']['primary']
@@ -223,7 +222,7 @@ def CreateDownload(url):
   
   #  print(json.dumps(jsondata,indent=2))
   
-  if type == 'nbc':
+  if 'nbc.com' in link['server']:
   
     # Get LD+JSON (JSON)
     ldjson = json.loads(soup.find('script',attrs={'type':re.compile('json')}).string)
@@ -242,7 +241,7 @@ def CreateDownload(url):
     preload_pages=preload['pages'][list(preload['pages'].keys())[0]]
   
     # Get data from player link
-    plink = '{}/p/{}/{}/select/media/guid/{}/{}'.format(jsondata['MPX']['domain'],jsondata['MPX']['pid'],jsondata['MPX']['playerName'],jsondata['MPX']['id'],link[6])
+    plink = '{}/p/{}/{}/select/media/guid/{}/{}'.format(jsondata['MPX']['domain'],jsondata['MPX']['pid'],jsondata['MPX']['playerName'],jsondata['MPX']['id'],link['id'])
   #  print(plink)
     req = urllib.request.Request(plink, data=None, headers=headers)
     with urllib.request.urlopen(req) as response:
@@ -307,8 +306,8 @@ def CreateDownload(url):
     #if len(chk_date)>2:
     #  if datecode != chk_date[1]:
     #    raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,guid))
-    pgmdata['name'] = link[5]
-    pgmdata['guid'] = link[5]
+    pgmdata['name'] = link['name']
+    pgmdata['guid'] = link['id']
   
     # Video title
     try:
@@ -335,7 +334,7 @@ def CreateDownload(url):
             pgmdata['desc'] = psoup.find('meta',attrs={'property':'og:description'})['content']
   
     # Webpage URLs
-    pgmdata['webpage'] = clean_url
+    pgmdata['webpage'] = link['url']
   
     # Thumbnail image URL
     try:
@@ -792,16 +791,11 @@ if len(args.search[0])>0 and len(args.search[1])>0:
         broadcastDate = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
     link['date'] = broadcastDate
     try:
-      l= re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',link['url'])
-      link['name'] = l[4]
-      link['id'] = l[6]
+      link['name'] = parseUrl(link['url'])['name']
+      link['id'] = parseUrl(link['url'])['id']
     except IndexError:
-      try:
-        l = re.split(r'(?x)^(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',link['url'])
-        link['name'] = l[5]
-        link['id'] = l[6]
-      except IndexError:
-        link['name'] = None
+      link['name'] = None
+      link['id'] = None
 
   # Remove any without a name 
   for i in reversed(range(len(links))):
