@@ -145,8 +145,20 @@ parser.add_argument('-Q','--quarter', action='store_true', dest='by_quarter',
                     help='When used with "-s", organize files by quarter instead of by month.')
 parser.add_argument('-t','--test', action='store_true', dest='test',
                     help='Test mode, only test the URL and display the JSON.')
+parser.add_argument('-N','--nocolor', action='store_true', dest='nocolor',
+                    help='Do not use terminal colors.')
 args = parser.parse_args()
 
+# Remove colors from terminal
+if args.nocolor:
+  bcolors.HEADER = ''
+  bcolors.OKBLUE = ''
+  bcolors.OKGREEN = ''
+  bcolors.WARNING = ''
+  bcolors.FAIL = ''
+  bcolors.ENDC = ''
+  bcolors.BOLD = ''
+  bcolors.UNDERLINE = ''
 
 
 def CreateDownload(url):
