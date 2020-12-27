@@ -118,6 +118,8 @@ def parseUrl(raw_url):
 parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
 parser.add_argument('url',metavar='url',nargs='*',default='',
                     help='URL of video to download.')
+parser.add_argument('-c','--captions', action='store_true', dest='captions',
+                    help='When processing/saving a video, also output the captions to a folder.')
 parser.add_argument('-d','--dryrun', action='store_true', dest='dryrun',
                     help='Dry run mode, generate commands but do not actually run them.')
 parser.add_argument('-f','--force', action='store_true', dest='force',
@@ -652,6 +654,15 @@ def ProcessData(pgmdata):
       subprocess.run(ffmpeg,capture_output=False,check=True)
       Path('{}/{}.ts'.format(dir,pgmdata['guid'])).unlink()
 
+  # Copy captions to folder if requested
+  if args.captions and pgmdata['captions'] != None:
+    Path('captions').mkdir(parents=True,exist_ok=True)
+    ext = re.split(r'(.+)\.(.+)',pgmdata['captions']['filename'])[2]
+    copy = ['cp','-av','{}/{}'.format(dir,pgmdata['captions']['filename']),'captions/{}.{}'.format(dir,ext)]
+    print('{}{}{}'.format(bcolors.OKGREEN,copy,bcolors.ENDC))
+    subprocess.run(copy,capture_output=False,check=True)
+
+  # Archive and remove data
   if not Path('.archive/{}.zip'.format(dir)).is_file() or args.forcearc:
     if args.forcearc:
       Path('.archive/{}.zip'.format(dir)).unlink(missing_ok=True)
