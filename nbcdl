@@ -129,9 +129,13 @@ parser.add_argument('-q','--quick', action='store_true', dest='qcheck',
                     help='Quick check mode quickly checks if the MP4 was already downloaded without going online.')
 parser.add_argument('-r','--restart', metavar='DIRECTORY', dest='prevdir',default='',
                     help='Restart mode, skip the download and only do the finalization steps.')
-parser.add_argument('-s','--search', metavar=('WEB_URL','OUTPUT_DIR'),dest='search',
-                    nargs=2,default=['',''],
-                    help='Search for URLs on website, and make URL download files.')
+#parser.add_argument('-s','--search', metavar=('WEB_URL','OUTPUT_DIR'),dest='search',
+#                    nargs=2,default=['',''],
+#                    help='Search for URLs on website, and make URL download files.')
+parser.add_argument('-s','--search', metavar='WEB_SITEURL', dest='search',default='',
+                    help='Search a given website for video URLs, and make a list.')
+parser.add_argument('-o','--output', metavar='OUTPUT_DIR', dest='searchout',default='',
+                    help='Only applies when used with "-s"; output found URLs to "url.txt" files.')
 parser.add_argument('-Q','--quarter', action='store_true', dest='by_quarter',
                     help='When used with "-s", organize files by quarter instead of by month.')
 parser.add_argument('-t','--test', action='store_true', dest='test',
@@ -664,11 +668,11 @@ except IndexError:
 
 
 # Search for URLs online if requested to do so
-if len(args.search[0])>0 and len(args.search[1])>0:
-  print('{}Searching for URLs from {}...{}'.format(bcolors.OKBLUE,args.search[0],bcolors.ENDC))
+if args.search:
+  print('{}Searching for URLs from {}...{}'.format(bcolors.OKBLUE,args.search,bcolors.ENDC))
 
   # Download webpage
-  req = urllib.request.Request(args.search[0], data=None, headers=headers)
+  req = urllib.request.Request(args.search, data=None, headers=headers)
   with urllib.request.urlopen(req) as response:
     webpage = response.read()
     soup = BeautifulSoup(webpage,features='html.parser')
@@ -768,7 +772,7 @@ if len(args.search[0])>0 and len(args.search[1])>0:
         #print(json.dumps(package,indent=2))
         if package['name'] == None:
           package['name'] = ''
-        if ('kids' in args.search[0] and package['type'] in ('bacon', 'oneUp')) or 'Full' in package['name']:
+        if ('kids' in args.search and package['type'] in ('bacon', 'oneUp')) or 'Full' in package['name']:
           broadcasts.extend(package['items'])
     #print(json.dumps(broadcasts,indent=2))
     for broadcast in broadcasts:
@@ -837,28 +841,61 @@ if len(args.search[0])>0 and len(args.search[1])>0:
   #print(json.dumps(yearqtr,indent=2,default=str))
 
   #Create output URL files
-  od = args.search[1]
   if args.by_quarter:
     uu = yearqtr 
   else:
     uu = yearmth
-  print(json.dumps(uu,indent=2,default=str))
 
-  for year in list(uu.keys()):
-    for sub in list(uu[year].keys()):
-      pp = '{}/{}/{}'.format(od,year,sub)
-      print(pp)
-      Path(pp).mkdir(parents=True,exist_ok=True)
-      if Path('{}/url.txt'.format(pp)).is_file():
-        with open('{}/url.txt'.format(pp),'r') as f:
-          preexisting = f.read().splitlines()
-        print(json.dumps(preexisting,indent=2,default=str))
-      else:
-        with open('{}/url.txt'.format(pp),'w') as f:
-          for k in uu[year][sub]:
-            f.write('{}\n'.format(k['url']))
+  if args.searchout:
+    od = args.searchout
+    for year in list(uu.keys()):
+      for sub in list(uu[year].keys()):
+        pp = '{}/{}/{}'.format(od,year,sub)
+        #print(pp)
+        Path(pp).mkdir(parents=True,exist_ok=True)
+        if Path('{}/url.txt'.format(pp)).is_file():
+  
+          with open('{}/url.txt'.format(pp),'r') as f:
+            preexisting = f.read().splitlines()
+          preexisting_p = [parseUrl(j) for j in preexisting]
+          preexisting_ids = [j['id'] for j in preexisting_p]
+          #print(json.dumps(preexisting_p,indent=2,default=str))
+  
+          to_add = []
+          for j in uu[year][sub]:
+            if j['id'] not in preexisting_ids:
+              to_add.extend([j])
+  
+          #print(json.dumps(to_add,indent=2,default=str))
+          if len(to_add)>0:
+            if len(to_add)==1:
+              print('{}Appending {:,} record to {}/url.txt ...{}'.format(bcolors.OKGREEN,len(to_add),pp,bcolors.ENDC))
+            else:
+              print('{}Appending {:,} records to {}/url.txt ...{}'.format(bcolors.OKGREEN,len(to_add),pp,bcolors.ENDC))
+            with open('{}/url.txt'.format(pp),'w') as f:
+              for k in preexisting:
+                f.write('{}\n'.format(k))
+              for k in to_add:
+                f.write('{}\n'.format(k['url']))
+  
+          else:
+            print('{}No new records for {}/url.txt ...{}'.format(bcolors.OKBLUE,pp,bcolors.ENDC))
+  
+        else:
+          print('{}Writing {:,} record to {}/url.txt ...{}'.format(bcolors.OKGREEN,len(uu[year][sub]),pp,bcolors.ENDC))
+          with open('{}/url.txt'.format(pp),'w') as f:
+            for k in uu[year][sub]:
+              f.write('{}\n'.format(k['url']))
+  else:
+    # Clean up the output a bit
+    for y in list(uu.keys()):
+      for s in list(uu[y].keys()):
+        for i in uu[y][s]:
+          i.pop('id')
+          i.pop('name')
+    # Print the URL list
+    print(json.dumps(uu,indent=2,default=str))
 
-    
   quit()
 
 
