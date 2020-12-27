@@ -562,41 +562,41 @@ def CreateDownload(url):
       Path('{}/ts'.format(dir)).mkdir(parents=True,exist_ok=True)
   
     # Write data
-    print('Writing {}/metadata.json...'.format(dir))
+    print('Writing {}/metadata.json ...'.format(dir))
     with open('{}/metadata.json'.format(dir),'w') as f:
       json.dump(pgmdata,f,indent=2)
-    print('Writing {}/response_data/webpage...'.format(dir))
+    print('Writing {}/response_data/webpage ...'.format(dir))
     with open('{}/response_data/webpage'.format(dir),'wb') as f:
       f.write(webpage)
     try:
       if pdata != None:
-        print('Writing {}/response_data/player...'.format(dir))
+        print('Writing {}/response_data/player ...'.format(dir))
         with open('{}/response_data/player'.format(dir),'wb') as f:
           f.write(pdata)
     except UnboundLocalError:
       pass
     try:
       if preview != None:
-        print('Writing {}/response_data/preview...'.format(dir))
+        print('Writing {}/response_data/preview ...'.format(dir))
         with open('{}/response_data/preview'.format(dir),'wb') as f:
           f.write(preview)
     except UnboundLocalError:
       pass
-    print('Writing {}/response_data/asset_mp4...'.format(dir))
+    print('Writing {}/response_data/asset_mp4 ...'.format(dir))
     with open('{}/response_data/asset_mp4'.format(dir),'wb') as f:
       f.write(vdata1)
-    print('Writing {}/response_data/asset_m3u8...'.format(dir))
+    print('Writing {}/response_data/asset_m3u8 ...'.format(dir))
     with open('{}/response_data/asset_m3u8'.format(dir),'wb') as f:
       f.write(vdata2)
     if pgmdata['data']['m3u'] != None:
-      print('Writing {}/ts/master.m3u8...'.format(dir))
+      print('Writing {}/ts/master.m3u8 ...'.format(dir))
       with open('{}/ts/master.m3u8'.format(dir),'wb') as f:
         f.write(vdata3)
-      print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['indexfile']))
+      print('Writing {}/ts/{} ...'.format(dir,pgmdata['data']['m3u']['indexfile']))
       with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['indexfile']),'wb') as f:
         f.write(vdata4)
       if pgmdata['data']['m3u']['encryption'] != None:
-        print('Writing {}/ts/{}...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
+        print('Writing {}/ts/{} ...'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']))
         with open('{}/ts/{}'.format(dir,pgmdata['data']['m3u']['encryption']['keyfile']),'wb') as f:
           f.write(cryptokey)
   
@@ -703,7 +703,7 @@ except IndexError:
 
 # Search for URLs online if requested to do so
 if args.search:
-  print('{}Searching for URLs from {}...{}'.format(bcolors.OKBLUE,args.search,bcolors.ENDC))
+  print('{}Searching for URLs from {} ...{}'.format(bcolors.OKBLUE,args.search,bcolors.ENDC))
 
   # Download webpage
   req = urllib.request.Request(args.search, data=None, headers=headers)
