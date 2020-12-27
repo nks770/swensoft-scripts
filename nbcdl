@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+import sys
 import argparse
 import copy
 import json
@@ -18,6 +19,8 @@ firefox_headers = {'User-Agent': firefox_agent}
 
 user_agent = 'Lavf/58.45.100'
 headers = {'User-Agent': user_agent}
+
+stats = {'attempted':0,'success':0,'skipped':0}
 
 # Define terminal colors
 class bcolors:
@@ -146,6 +149,8 @@ args = parser.parse_args()
 
 def CreateDownload(url):
 
+  stats['attempted'] = stats['attempted'] + 1
+
   # Verify provided URL
   link = parseUrl(url)
   if link==None:
@@ -155,6 +160,7 @@ def CreateDownload(url):
     qcheck = list(Path('.').glob('*{}*mp4'.format(link['name']))) 
     if len(qcheck)>0:
       print('{}Found that {} already exits, nothing to do.{}'.format(bcolors.OKGREEN,str(qcheck[0]),bcolors.ENDC))
+      stats['skipped'] = stats['skipped'] + 1
       return None
 
   # Download webpage
@@ -489,15 +495,27 @@ def CreateDownload(url):
   if args.test:
     return None
 
-  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
-    print('{}No video data available for {}{}'.format(bcolors.FAIL,pgmdata['name'],bcolors.ENDC))
-    return None
-  
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
   
   file_exists = False
   if Path('.archive/{}.zip'.format(dir)).is_file() or Path('{}.mp4'.format(dir)).is_file():
     file_exists = True
+  
+  if file_exists and not (args.force or args.forcearc):
+    print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+    stats['skipped'] = stats['skipped'] + 1
+    return None
+  
+  if Path('{}/metadata.json'.format(dir)).is_file() and not (args.force or args.forcearc):
+    #with open('{}/metadata.json'.format(dir),'r') as j:
+    #  pgmdata = json.load(j)
+    print('{}Temporary directory already exists, please specify "-f" to overwrite.{}'.format(bcolors.WARNING,bcolors.ENDC))
+    #return pgmdata
+    return None
+
+  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
+    print('{}No video data available for {}{}'.format(bcolors.FAIL,pgmdata['name'],bcolors.ENDC))
+    return None
   
   commands = []
   
@@ -516,17 +534,6 @@ def CreateDownload(url):
   if pgmdata['thumbnail'] != None:
     commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
   
-  if file_exists and not (args.force or args.forcearc):
-    commands = []
-    print("{}Files already downloaded. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
-    return None
-  
-  if Path('{}/metadata.json'.format(dir)).is_file() and not (args.force or args.forcearc):
-    with open('{}/metadata.json'.format(dir),'r') as j:
-      pgmdata = json.load(j)
-    print("{}Files already downloaded. Skipping download.{}".format(bcolors.OKGREEN,bcolors.ENDC))
-    return pgmdata
-
   if args.dryrun:
     for cmd in commands.extend(copycmd,cleancmd,archive,rmcmd):
       print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
@@ -654,6 +661,8 @@ def ProcessData(pgmdata):
     subprocess.run(archive,capture_output=False,check=True)
     if not args.no_delete:
       subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
+
+  stats['success'] = stats['success'] + 1
 
 
 
@@ -896,7 +905,11 @@ if args.search:
     # Print the URL list
     print(json.dumps(uu,indent=2,default=str))
 
-  quit()
+  if len(uu)==0:
+    print('{}NOTE: No URLs could be found at this address!{}'.format(bcolors.WARNING,bcolors.ENDC))
+    sys.exit(90)
+  else:
+    sys.exit()
 
 
 # If this is a restart run, then load the JSON.
@@ -922,4 +935,13 @@ else:
     pgmdata = CreateDownload(u)
     if not (args.test or args.dryrun):
       ProcessData(pgmdata)
+
+print('{}Stats: {:,} downloads attempted, {:,} video files successful, {:,} links skipped.{}'.format(
+	bcolors.HEADER,stats['attempted'],stats['success'],stats['skipped'],bcolors.ENDC))
+
+if stats['attempted'] > (stats['success'] + stats['skipped']):
+  print('{}NOTE: There were some failures.{}'.format(bcolors.WARNING,bcolors.ENDC))
+  sys.exit(91)
+else:
+  sys.exit()
 
