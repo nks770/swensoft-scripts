@@ -35,9 +35,9 @@ get_links 'Nightly News Kids Edition' 'https://www.nbcnews.com/nightlykids' '/da
 get_links 'TODAY' 'https://www.nbc.com/today' '/data/vids/News Shows/TODAY'
 
 # Late Night TV (organized by quarter)
-get_links 'The Tonight Show Starring Jimmy Fallon' 'https://www.nbc.com/the-tonight-show' '/data/vids/News Shows/The Tonight Show Starring Jimmy Fallon' '-q'
-get_links 'Late Night with Seth Meyers' 'https://www.nbc.com/late-night-with-seth-meyers' '/data/vids/News Shows/Late Night with Seth Meyers' '-q'
-get_links 'A Little Late with Lilly Singh' 'https://www.nbc.com/a-little-late-with-lilly-singh' '/data/vids/News Shows/A Little Late with Lilly Singh' '-q'
+get_links 'The Tonight Show Starring Jimmy Fallon' 'https://www.nbc.com/the-tonight-show' '/data/vids/News Shows/The Tonight Show Starring Jimmy Fallon' '-Q'
+get_links 'Late Night with Seth Meyers' 'https://www.nbc.com/late-night-with-seth-meyers' '/data/vids/News Shows/Late Night with Seth Meyers' '-Q'
+get_links 'A Little Late with Lilly Singh' 'https://www.nbc.com/a-little-late-with-lilly-singh' '/data/vids/News Shows/A Little Late with Lilly Singh' '-Q'
 
 # Email me for shows where we couldn't find any links
 if [ -s ${nolinks} ] ; then
