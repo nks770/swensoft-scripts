@@ -21,6 +21,7 @@ user_agent = 'Lavf/58.45.100'
 headers = {'User-Agent': user_agent}
 
 stats = {'attempted':0,'success':0,'skipped':0}
+ambiguity = []
 
 # Define terminal colors
 class bcolors:
@@ -244,7 +245,9 @@ def CreateDownload(url):
     chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',pgmdata['guid'])
     if len(chk_date)>2:
       if pgmdata['datecode'] != chk_date[1]:
-        raise Exception('ERROR: Ambiguity in program date between [{}] and {}.'.format(broadcastDateCT,pgmdata['guid']))
+        #raise Exception('ERROR: Ambiguity in program date between [{}] and [{}].'.format(broadcastDateCT,pgmdata['guid']))
+        ambiguity.extend([{'url':link['url'],'airdate':broadcastDateCT,'guid':pgmdata['guid'],'final_date':chk_date[1]}])
+        pgmdata['datecode'] = chk_date[1]
   
   #  print(json.dumps(jsondata,indent=2))
   
@@ -987,9 +990,16 @@ else:
 print('{}Stats: {:,} downloads attempted, {:,} video files successful, {:,} links skipped.{}'.format(
 	bcolors.HEADER,stats['attempted'],stats['success'],stats['skipped'],bcolors.ENDC))
 
+retcd=0
+
+if len(ambiguity)>0:
+  print('{}The program encountered some ambiguity in program dates.'.format(bcolors.HEADER));
+  print(json.dumps(ambiguity,indent=2,default=str))
+  print(bcolors.ENDC)
+  retcd=92
+
 if stats['attempted'] > (stats['success'] + stats['skipped']):
   print('{}NOTE: There were some failures.{}'.format(bcolors.WARNING,bcolors.ENDC))
-  sys.exit(91)
-else:
-  sys.exit()
+  retcd=91
 
+sys.exit(retcd)

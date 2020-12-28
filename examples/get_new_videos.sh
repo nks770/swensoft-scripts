@@ -6,30 +6,46 @@ email_from=$(cat ~/.emailfrom)
 
 # Load environment modules
 module load Python ffmpeg
+
+# Create temporary files
 nolinks=$(mktemp)
 error=$(mktemp)
 failures=$(mktemp)
 logfile=$(mktemp)
+logfile2=$(mktemp)
 emailbody=$(mktemp)
 tmpout=$(mktemp)
 tmperr=$(mktemp)
+
+function chomp() {
+  w=$(wc -l ${1}|awk '{print $1}')
+  x=$(($w+$w))
+  if [ ${x} -le ${2} ] ; then
+    cat ${1}
+  else
+    head -n ${2} ${1}
+    echo '..................<snip>..................'
+    tail -n ${2} ${1}
+  fi
+}
 
 function get_links() {
   echo "Getting links for ${1} ..."
   nbcdl -N -s "${2}" -o "${3}" ${4} > ${tmpout} 2> ${tmperr}
   retcd=$?
   if [ ${retcd} -eq 90 ] ; then
+    echo '#################################' >> ${logfile}
     echo "${1}" >> ${nolinks}
-    head -n 20 ${tmpout} >> ${logfile}
-    tail -n 20 ${tmpout} >> ${logfile}
-    cat ${tmperr} >> ${logfile}
-    echo '#################################' >> ${logfile}
+    chomp ${tmpout} 20 >> ${logfile}
+    chomp ${tmperr} 20 >> ${logfile}
+    echo "RETURN CODE ${retcd}" >> ${logfile}
   elif [ ${retcd} -gt 0 ] ; then
-    echo "${1} (${retcd})" >> ${error}
-    head -n 20 ${tmpout} >> ${logfile}
-    tail -n 20 ${tmpout} >> ${logfile}
-    cat ${tmperr} >> ${logfile}
-    echo '#################################' >> ${logfile}
+    echo '#################################' >> ${logfile2}
+    #echo "${1} (${retcd})" >> ${error}
+    echo "${1}" >> ${error}
+    chomp ${tmpout} 20 >> ${logfile2}
+    chomp ${tmperr} 20 >> ${logfile2}
+    echo "RETURN CODE ${retcd}" >> ${logfile2}
   fi
 }
 
@@ -47,9 +63,7 @@ get_links 'A Little Late with Lilly Singh' 'https://www.nbc.com/a-little-late-wi
 # Email me for shows where we couldn't find any links
 if [ -s ${nolinks} ] ; then
   echo 'PROBLEM SHOWS:' > ${emailbody}
-  cat ${nolinks} >> ${emailbody}
-  echo '##################################' >> ${emailbody}
-  cat ${logfile} >> ${emailbody}
+  cat ${nolinks} ${logfile} >> ${emailbody}
 
   w=$(wc -l ${nolinks}|awk '{print $1}')
   if [ ${w} -eq 1 ] ; then
@@ -64,9 +78,7 @@ fi
 # Email me about any serious script errors
 if [ -s ${error} ] ; then
   echo 'PROBLEM SHOWS:' > ${emailbody}
-  cat ${error} >> ${emailbody}
-  echo '##################################' >> ${emailbody}
-  cat ${logfile} >> ${emailbody}
+  cat ${error} ${logfile2} >> ${emailbody}
 
   w=$(wc -l ${error}|awk '{print $1}')
   if [ ${w} -eq 1 ] ; then
@@ -79,28 +91,28 @@ if [ -s ${error} ] ; then
 fi
 
 # Loop through directories to find url.txt files, and run them
-echo ''>${logfile}
-echo ''>${error}
+rm -f ${error} ${logfile} ${logfile2}
 IFS=$'\n'
 for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
   cd "${i}" > /dev/null
     if [ -f "url.txt" ] ; then
       echo "PROCESSING ${i} ..."
-      echo "PROCESSING ${i} ..." >> ${logfile}
-      nbcdl -S 24 -c -q url.txt > ${tmpout} 2> ${tmperr}
+      nbcdl -N -S 24 -c -q url.txt > ${tmpout} 2> ${tmperr}
       retcd=$?
       if [ ${retcd} -eq 91 ] ; then
         echo "${i}" >> ${failures}
-        head -n 20 ${tmpout} >> ${logfile}
-        tail -n 20 ${tmpout} >> ${logfile}
-        cat ${tmperr} >> ${logfile}
         echo '#################################' >> ${logfile}
+        echo "PROCESSING ${i} ..." >> ${logfile}
+        chomp ${tmpout} 20 >> ${logfile}
+        chomp ${tmperr} 20 >> ${logfile}
+        echo "RETURN CODE ${retcd}" >> ${logfile}
       elif [ ${retcd} -gt 0 ] ; then
         echo "${i} (${retcd})" >> ${error}
-        head -n 20 ${tmpout} >> ${logfile}
-        tail -n 20 ${tmpout} >> ${logfile}
-        cat ${tmperr} >> ${logfile}
-        echo '#################################' >> ${logfile}
+        echo '#################################' >> ${logfile2}
+        echo "PROCESSING ${i} ..." >> ${logfile2}
+        chomp ${tmpout} 20 >> ${logfile2}
+        chomp ${tmperr} 20 >> ${logfile2}
+        echo "RETURN CODE ${retcd}" >> ${logfile2}
       fi
     fi
   cd - > /dev/null
@@ -109,10 +121,8 @@ pwd
 
 # Email me for directories where some videos could not be downloaded
 if [ -s ${failures} ] ; then
-  echo 'PROBLEM DIRECTORIES:' > ${emailbody}
-  cat ${failures} >> ${emailbody}
-  echo '##################################' >> ${emailbody}
-  cat ${logfile} >> ${emailbody}
+  echo 'DIRECTORIES WITH FAILED VIDEOS:' > ${emailbody}
+  cat ${failures} ${logfile} >> ${emailbody}
 
   w=$(wc -l ${failures}|awk '{print $1}')
   if [ ${w} -eq 1 ] ; then
@@ -127,9 +137,7 @@ fi
 # Email me about any other serious script errors
 if [ -s ${error} ] ; then
   echo 'PROBLEM DIRECTORIES:' > ${emailbody}
-  cat ${error} >> ${emailbody}
-  echo '##################################' >> ${emailbody}
-  cat ${logfile} >> ${emailbody}
+  cat ${error} ${logfile2} >> ${emailbody}
 
   w=$(wc -l ${error}|awk '{print $1}')
   if [ ${w} -eq 1 ] ; then
@@ -141,4 +149,4 @@ if [ -s ${error} ] ; then
   mail -r ${email_from} -s "${subject}" ${email} < ${emailbody}
 fi
 # Clean up
-rm -fv ${nolinks} ${error} ${failures} ${logfile} ${emailbody} ${tmpout} ${tmperr}
+rm -fv ${nolinks} ${error} ${failures} ${logfile} ${logfile2} ${emailbody} ${tmpout} ${tmperr}
