@@ -229,17 +229,22 @@ def CreateDownload(url):
       pgmdata['captions'] = None
   
     # Video asset URLs
-    assetUrl = re.split(r'^([^\?]+)\?(.+)$',videoAssets[0]['publicUrl'])
-    if len(assetUrl)>2:
-      pgmdata['asset'] = {'base':assetUrl[1],
-                    'ext': assetUrl[2]}
-  #                'mp4': '',
-  #                'm3u': 'manifest=m3u'}
+    #print(json.dumps(pgmdata,indent=2,default=str))
+    #print(json.dumps(videoAssets,indent=2,default=str))
+    if len(videoAssets)==0:
+      pgmdata['asset'] = None
     else:
-      pgmdata['asset'] = {'base':videoAssets[0]['publicUrl'],
-                    'ext': None}
-  #                'mp4': '',
-  #                'm3u': 'manifest=m3u'}
+      assetUrl = re.split(r'^([^\?]+)\?(.+)$',videoAssets[0]['publicUrl'])
+      if len(assetUrl)>2:
+        pgmdata['asset'] = {'base':assetUrl[1],
+                      'ext': assetUrl[2]}
+    #                'mp4': '',
+    #                'm3u': 'manifest=m3u'}
+      else:
+        pgmdata['asset'] = {'base':videoAssets[0]['publicUrl'],
+                      'ext': None}
+    #                'mp4': '',
+    #                'm3u': 'manifest=m3u'}
   
     # Check the date code
     chk_date = re.split(r'(?:.*)(\d{6})(?:.*)',pgmdata['guid'])
@@ -405,14 +410,17 @@ def CreateDownload(url):
   
   # Get MP4 file link
   #url = '{}?mbr=true'.format(pgmdata['asset']['base'])
-  url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(pgmdata['asset']['base'])
-  req = urllib.request.Request(url, data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-   vdata1 = response.read()
-   soup1 = BeautifulSoup(vdata1,features='html.parser')
-  #print(vdata1.decode('utf-8'))
-  xdata1 = [x.attrs for x in soup1.find_all('video')]
-  xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
+  try:
+    url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(pgmdata['asset']['base'])
+    req = urllib.request.Request(url, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+     vdata1 = response.read()
+     soup1 = BeautifulSoup(vdata1,features='html.parser')
+    #print(vdata1.decode('utf-8'))
+    xdata1 = [x.attrs for x in soup1.find_all('video')]
+    xdata1.sort(key=lambda x: int(x['system-bitrate']),reverse=True)
+  except TypeError:
+    xdata1 = None
   #print(json.dumps(xdata1,indent=2))
   try:
     pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
@@ -423,28 +431,31 @@ def CreateDownload(url):
     except KeyError:
       pgmdata['data']['mp4']['width'] = None
       pgmdata['data']['mp4']['height'] = None
-  except (urllib.error.HTTPError, IndexError) as e:
+  except (urllib.error.HTTPError, IndexError, TypeError) as e:
   #  print(xdata1[0]['src'])
     pgmdata['data']['mp4'] = None
   
   
   # Get M3U file link
-  #url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
-  url = '{}?mbr=true&format=SMIL&manifest=m3u'.format(pgmdata['asset']['base'])
-  #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
-  #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
-  req = urllib.request.Request(url, data=None, headers=headers)
-  with urllib.request.urlopen(req) as response:
-   vdata2 = response.read()
-   soup2 = BeautifulSoup(vdata2,features='html.parser')
-  #print(vdata2.decode('utf-8'))
-  xdata2 = [x.attrs for x in soup2.find_all('video')]
-  xdata2.sort(key=lambda x: int(x['width']),reverse=True)
+  try:
+    #url = '{}?mbr=true&manifest=m3u'.format(pgmdata['asset']['base'])
+    url = '{}?mbr=true&format=SMIL&manifest=m3u'.format(pgmdata['asset']['base'])
+    #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+    #url = '{}?player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&manifest=m3u&format=SMIL&formats=MPEG-DASH+widevine,M3U+appleHlsEncryption,M3U+none,MPEG-DASH+none,MPEG4,MP3'.format(pgmdata['asset']['base'])
+    req = urllib.request.Request(url, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+     vdata2 = response.read()
+     soup2 = BeautifulSoup(vdata2,features='html.parser')
+    #print(vdata2.decode('utf-8'))
+    xdata2 = [x.attrs for x in soup2.find_all('video')]
+    xdata2.sort(key=lambda x: int(x['width']),reverse=True)
+  except TypeError:
+    xdata2 = None
   #print(json.dumps(xdata2[0],indent=2))
   try:
     if len(xdata2[0]['abstract']) > len(pgmdata['desc']):
       pgmdata['desc'] = xdata2[0]['abstract']
-  except IndexError:
+  except (IndexError,TypeError) as e:
     pass
   try:
     pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
@@ -502,7 +513,7 @@ def CreateDownload(url):
       tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
       pgmdata['data']['m3u']['playlist'].extend([tt])
     
-  except (urllib.error.HTTPError,IndexError) as e:
+  except (urllib.error.HTTPError,IndexError,TypeError) as e:
     pgmdata['data']['m3u'] = None
     
   #print(json.dumps(xdata4,indent=2))
@@ -512,6 +523,7 @@ def CreateDownload(url):
       pgmdata_['data']['m3u']['playlist'] = None
     print(json.dumps(pgmdata_,indent=2))
   if args.test:
+    stats['skipped'] = stats['skipped'] + 1
     return None
 
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])

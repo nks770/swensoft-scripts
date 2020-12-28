@@ -97,7 +97,7 @@ for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
   cd "${i}" > /dev/null
     if [ -f "url.txt" ] ; then
       echo "PROCESSING ${i} ..."
-      nbcdl -N -S 24 -c -q url.txt > ${tmpout} 2> ${tmperr}
+      nbcdl -N -S 100 -c -q url.txt > ${tmpout} 2> ${tmperr}
       retcd=$?
       if [ ${retcd} -eq 91 ] ; then
         echo "${i}" >> ${failures}
@@ -107,7 +107,8 @@ for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
         chomp ${tmperr} 20 >> ${logfile}
         echo "RETURN CODE ${retcd}" >> ${logfile}
       elif [ ${retcd} -gt 0 ] ; then
-        echo "${i} (${retcd})" >> ${error}
+        #echo "${i} (${retcd})" >> ${error}
+        echo "${i}" >> ${error}
         echo '#################################' >> ${logfile2}
         echo "PROCESSING ${i} ..." >> ${logfile2}
         chomp ${tmpout} 20 >> ${logfile2}
