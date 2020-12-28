@@ -551,8 +551,9 @@ def CreateDownload(url):
     commands.extend([['wget',pgmdata['thumbnail']['url'],'-O','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])]])
   
   if args.dryrun:
-    for cmd in commands.extend(copycmd,cleancmd,archive,rmcmd):
+    for cmd in commands:
       print('{}{}{}'.format(bcolors.OKGREEN,cmd,bcolors.ENDC))
+    stats['success'] = stats['success'] + 1
     return None
   
   else:
