@@ -5,6 +5,8 @@ email=$(cat ~/.email)
 email_from=$(cat ~/.emailfrom)
 
 # Load environment modules
+export PATH=/usr/local/bin:${PATH}
+source /opt/Modules/4.1.3/init/sh
 module load Python ffmpeg
 
 # Create temporary files
@@ -99,6 +101,8 @@ for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
       echo "PROCESSING ${i} ..."
       nbcdl -N -S 100 -c -q url.txt > ${tmpout} 2> ${tmperr}
       retcd=$?
+      #cp -av ${tmpout} $(date +%Y%m%d-%H%M%S)-out.log
+      #cp -av ${tmperr} $(date +%Y%m%d-%H%M%S)-err.log
       if [ ${retcd} -eq 91 ] ; then
         echo "${i}" >> ${failures}
         echo '#################################' >> ${logfile}
