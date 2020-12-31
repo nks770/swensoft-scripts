@@ -145,6 +145,8 @@ parser.add_argument('-r','--restart', metavar='DIRECTORY', dest='prevdir',defaul
 #parser.add_argument('-s','--search', metavar=('WEB_URL','OUTPUT_DIR'),dest='search',
 #                    nargs=2,default=['',''],
 #                    help='Search for URLs on website, and make URL download files.')
+parser.add_argument('-p','--permissive', action='store_true', dest='permissive',
+                    help='Permissive mode; do not produce an error if no video data is available.')
 parser.add_argument('-s','--search', metavar='WEB_SITEURL', dest='search',default='',
                     help='Search a given website for video URLs, and make a list.')
 parser.add_argument('-o','--output', metavar='OUTPUT_DIR', dest='searchout',default='',
@@ -182,6 +184,7 @@ def CreateDownload(url):
   
   if args.qcheck:
     qcheck = list(Path('.').glob('*{}*mp4'.format(link['name']))) 
+    qcheck.extend(list(Path('.archive').glob('*{}*zip'.format(link['name']))))
     if len(qcheck)>0:
       print('{}Found that {} already exits, nothing to do.{}'.format(bcolors.OKGREEN,str(qcheck[0]),bcolors.ENDC))
       stats['skipped'] = stats['skipped'] + 1
@@ -551,7 +554,7 @@ def CreateDownload(url):
     #return pgmdata
     return None
 
-  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
+  if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None and not args.permissive:
     print('{}No video data available for {}{}'.format(bcolors.FAIL,pgmdata['name'],bcolors.ENDC))
     return None
   
@@ -648,8 +651,11 @@ def ProcessData(pgmdata):
 
   # Exit subroutine if there is no video data available
   if pgmdata['data']['mp4'] == None and pgmdata['data']['m3u'] == None:
-    print("{}No mp4 of m3u data found. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
-    return None
+    if args.permissive:
+      print("{}No mp4 or m3u data found. Proceeding.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+    else:
+      print("{}No mp4 or m3u data found. Nothing to do.{}".format(bcolors.OKGREEN,bcolors.ENDC))
+      return None
 
   if not Path('{}.mp4'.format(dir)).is_file() or (args.force or args.forcearc):
 
