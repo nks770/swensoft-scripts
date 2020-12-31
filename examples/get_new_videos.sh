@@ -57,6 +57,9 @@ get_links 'NBC Nightly News (nbc.com)' 'https://www.nbc.com/nbc-nightly-news' '/
 get_links 'Nightly News Kids Edition' 'https://www.nbcnews.com/nightlykids' '/data/vids/News Shows/Nightly News Kids Edition'
 get_links 'TODAY' 'https://www.nbc.com/today' '/data/vids/News Shows/TODAY'
 
+# Dateline
+get_links 'Dateline' 'https://www.nbc.com/dateline' '/data/vids/News Shows/Dateline' '-Q'
+
 # Late Night TV (organized by quarter)
 get_links 'The Tonight Show Starring Jimmy Fallon' 'https://www.nbc.com/the-tonight-show' '/data/vids/News Shows/The Tonight Show Starring Jimmy Fallon' '-Q'
 get_links 'Late Night with Seth Meyers' 'https://www.nbc.com/late-night-with-seth-meyers' '/data/vids/News Shows/Late Night with Seth Meyers' '-Q'
