@@ -731,20 +731,31 @@ def ProcessData(pgmdata):
   stats['success'] = stats['success'] + 1
 
 
-def verifyFile(url,fname):
+def verifyFile(url,fname,**kwargs):
+  try:
+    sha1=kwargs['sha1']
+  except KeyError:
+    sha1=None
   wget = ['wget','--user-agent={}'.format(user_agent),url,'-O','test']
   subprocess.run(wget,capture_output=False,check=True)
   a = subprocess.run(['sha1sum','test'],capture_output=True,check=True).stdout.decode('utf-8').split()
   b = subprocess.run(['sha1sum',fname],capture_output=True,check=True).stdout.decode('utf-8').split()
   Path('test'.format(dir)).unlink(missing_ok=True)
-  if a[0] == b[0]:
-    print("{}OK! {}{}".format(bcolors.OKGREEN,a[0],bcolors.ENDC))
-    return []
-  else:
+  if a[0] != b[0]:
     print("{}DIFFERENT! {} {}{}".format(bcolors.FAIL,a[0],b[0],bcolors.ENDC))
     return [fname]
+  elif sha1 != None and sha1 != a[0]:
+    print("{}DIFFERENT THAN SPECIFIED! {} {}{}".format(bcolors.FAIL,sha1,a[0],bcolors.ENDC))
+    return [fname]
+  else: 
+    print("{}OK! {}{}".format(bcolors.OKGREEN,a[0],bcolors.ENDC))
+    return []
   
-def verifyEncryptedFile(url,key1,fname,key2):
+def verifyEncryptedFile(url,key1,fname,key2,**kwargs):
+  try:
+    sha1=kwargs['sha1']
+  except KeyError:
+    sha1=None
   wget = ['wget','--user-agent={}'.format(user_agent),url,'-O','test']
   subprocess.run(wget,capture_output=False,check=True)
   iv = {}
@@ -771,29 +782,43 @@ def verifyEncryptedFile(url,key1,fname,key2):
   subprocess.run(openssl2,capture_output=False,check=True)
   a = subprocess.run(['sha1sum','base'],capture_output=True,check=True).stdout.decode('utf-8').split()
   b = subprocess.run(['sha1sum','comp'],capture_output=True,check=True).stdout.decode('utf-8').split()
+  c = subprocess.run(['sha1sum','test'],capture_output=True,check=True).stdout.decode('utf-8').split()
   Path('test'.format(dir)).unlink(missing_ok=True)
   Path('base'.format(dir)).unlink(missing_ok=True)
   Path('base.crypt'.format(dir)).unlink(missing_ok=True)
   Path('comp'.format(dir)).unlink(missing_ok=True)
   Path('comp.crypt'.format(dir)).unlink(missing_ok=True)
-  if a[0] == b[0]:
-    print("{}OK! {}{}".format(bcolors.OKGREEN,a[0],bcolors.ENDC))
-    return []
-  else:
+  if a[0] != b[0]:
     print("{}DIFFERENT! {} {}{}".format(bcolors.FAIL,a[0],b[0],bcolors.ENDC))
     return [fname]
+  elif sha1 != None and sha1 != c[0]:
+    print("{}DIFFERENT ENCRYPTED SHA1! {} {}{}".format(bcolors.FAIL,sha1,c[0],bcolors.ENDC))
+    return [fname]
+  else: 
+    print("{}OK! {}{}".format(bcolors.OKGREEN,a[0],bcolors.ENDC))
+    return []
 
 def verifyDownload(pgmdata):
   dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
   differences = []
+  if pgmdata['thumbnail'] != None:
+    if 'sha1' not in pgmdata['thumbnail'].keys():
+      pgmdata['thumbnail']['sha1'] = subprocess.run(['sha1sum','{}/{}'.format(dir,pgmdata['thumbnail']['filename'])],capture_output=True,check=True).stdout.decode('utf-8').split()[0]
+    differences.extend(verifyFile(pgmdata['thumbnail']['url'],'{}/{}'.format(dir,pgmdata['thumbnail']['filename']),sha1=pgmdata['thumbnail']['sha1']))
   if pgmdata['captions'] != None:
-    differences.extend(verifyFile(pgmdata['captions']['url'],'{}/{}'.format(dir,pgmdata['captions']['filename'])))
+    if 'sha1' not in pgmdata['captions'].keys():
+      pgmdata['captions']['sha1'] = subprocess.run(['sha1sum','{}/{}'.format(dir,pgmdata['captions']['filename'])],capture_output=True,check=True).stdout.decode('utf-8').split()[0]
+    differences.extend(verifyFile(pgmdata['captions']['url'],'{}/{}'.format(dir,pgmdata['captions']['filename']),sha1=pgmdata['captions']['sha1']))
   if pgmdata['data']['mp4'] != None:
-    differences.extend(verifyFile(pgmdata['data']['mp4']['url'],'{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])))
+    if 'sha1' not in pgmdata['data']['mp4'].keys():
+      pgmdata['data']['mp4']['sha1'] = subprocess.run(['sha1sum','{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])],capture_output=True,check=True).stdout.decode('utf-8').split()[0]
+    differences.extend(verifyFile(pgmdata['data']['mp4']['url'],'{}/{}'.format(dir,pgmdata['data']['mp4']['filename']),sha1=pgmdata['data']['mp4']['sha1']))
   if pgmdata['data']['m3u'] != None:
     if pgmdata['data']['m3u']['encryption'] == None:
       for ts in pgmdata['data']['m3u']['playlist']:
-        differences.extend(verifyFile(ts['url'],'{}/ts/{}'.format(dir,ts['file'])))
+        if 'sha1' not in ts.keys():
+          ts['sha1'] = subprocess.run(['sha1sum','{}/ts/{}'.format(dir,ts['file'])],capture_output=True,check=True).stdout.decode('utf-8').split()[0]
+        differences.extend(verifyFile(ts['url'],'{}/ts/{}'.format(dir,ts['file']),sha1=ts['sha1']))
     else:
       # Encrypted
       req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
@@ -801,7 +826,9 @@ def verifyDownload(pgmdata):
         cryptokey = response.read()
       key=(''.join('{:02x}'.format(x) for x in cryptokey))
       for ts in pgmdata['data']['m3u']['playlist']:
-        differences.extend(verifyEncryptedFile(ts['url'],key,'{}/ts/{}'.format(dir,ts['file']),pgmdata['data']['m3u']['encryption']['key'].replace(' ','')))
+        if 'sha1' not in ts.keys():
+          ts['sha1'] = subprocess.run(['sha1sum','{}/ts/{}'.format(dir,ts['file'])],capture_output=True,check=True).stdout.decode('utf-8').split()[0]
+        differences.extend(verifyEncryptedFile(ts['url'],key,'{}/ts/{}'.format(dir,ts['file']),pgmdata['data']['m3u']['encryption']['key'].replace(' ',''),sha1=ts['sha1']))
   
   #print(json.dumps(differences,indent=2,default=str))
   if len(differences)>0:
@@ -1066,27 +1093,9 @@ if args.prevdir != '':
 elif args.verify != '':
   with open('{}/metadata.json'.format(args.verify),'r') as j:
     pgmdata = json.load(j)
-  #dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
-  dir=args.verify
-  differences = []
-  if pgmdata['captions'] != None:
-    differences.extend(verifyFile(pgmdata['captions']['url'],'{}/{}'.format(dir,pgmdata['captions']['filename'])))
-  if pgmdata['data']['mp4'] != None:
-    differences.extend(verifyFile(pgmdata['data']['mp4']['url'],'{}/{}'.format(dir,pgmdata['data']['mp4']['filename'])))
-  if pgmdata['data']['m3u'] != None:
-    if pgmdata['data']['m3u']['encryption'] == None:
-      for ts in pgmdata['data']['m3u']['playlist']:
-        differences.extend(verifyFile(ts['url'],'{}/ts/{}'.format(dir,ts['file'])))
-    else:
-      # Encrypted
-      req = urllib.request.Request(pgmdata['data']['m3u']['encryption']['keyurl'], data=None, headers=headers)
-      with urllib.request.urlopen(req) as response:
-        cryptokey = response.read()
-      key=(''.join('{:02x}'.format(x) for x in cryptokey))
-      for ts in pgmdata['data']['m3u']['playlist']:
-        differences.extend(verifyEncryptedFile(ts['url'],key,'{}/ts/{}'.format(dir,ts['file']),pgmdata['data']['m3u']['encryption']['key'].replace(' ','')))
 
-  print(json.dumps(differences,indent=2,default=str))
+  differences = verifyDownload(pgmdata)
+
   if len(differences)>0:
     print("{}DIFFERENCES FOUND.{}".format(bcolors.FAIL,bcolors.ENDC))
     sys.exit(99)
@@ -1122,7 +1131,11 @@ else:
   
   for u in urlfile:
     print('{}{}{}'.format(bcolors.OKBLUE,u,bcolors.ENDC))
+
+    # Initial download of video data
     pgmdata = CreateDownload(u)
+
+    # Extra logic for secure mode, to verify and/or re-download (or re-re-download)
     if not (args.test or args.dryrun or pgmdata == None) and args.securemode:
       dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
       if len(verifyDownload(pgmdata))>0:
@@ -1134,6 +1147,12 @@ else:
           if len(verifyDownload(pgmdata))>0:
             subprocess.run(['rm','-rfv',dir],capture_output=False,check=True)
             pgmdata = None
+      # In secure mode, overwrite metadata.json with the version with SHA1 hashes
+      if pgmdata != None:
+        with open('{}/metadata.json'.format(dir),'w') as f:
+          json.dump(pgmdata,f,indent=2)
+
+    # Copy and/or convert video to MP4
     if not (args.test or args.dryrun):
       ProcessData(pgmdata)
 
