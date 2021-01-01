@@ -102,7 +102,7 @@ for i in $(find /data/vids/News\ Shows -mindepth 0 -type d) ; do
   cd "${i}" > /dev/null
     if [ -f "url.txt" ] ; then
       echo "PROCESSING ${i} ..."
-      nbcdl -N -S 100 -c -q url.txt > ${tmpout} 2> ${tmperr}
+      nbcdl -N -S 100 -c -e -q url.txt > ${tmpout} 2> ${tmperr}
       retcd=$?
       #cp -av ${tmpout} $(date +%Y%m%d-%H%M%S)-out.log
       #cp -av ${tmperr} $(date +%Y%m%d-%H%M%S)-err.log
