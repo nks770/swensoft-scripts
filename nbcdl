@@ -1126,13 +1126,13 @@ else:
     if not (args.test or args.dryrun or pgmdata == None) and args.securemode:
       dir='{}_{}'.format(pgmdata['datecode'],pgmdata['name'])
       if len(verifyDownload(pgmdata))>0:
-        subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
-        pgmdata = CrateDownload(u)
+        subprocess.run(['rm','-rfv',dir],capture_output=False,check=True)
+        pgmdata = CreateDownload(u)
         if len(verifyDownload(pgmdata))>0:
-          subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
-          pgmdata = CrateDownload(u)
+          subprocess.run(['rm','-rfv',dir],capture_output=False,check=True)
+          pgmdata = CreateDownload(u)
           if len(verifyDownload(pgmdata))>0:
-            subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
+            subprocess.run(['rm','-rfv',dir],capture_output=False,check=True)
             pgmdata = None
     if not (args.test or args.dryrun):
       ProcessData(pgmdata)
