@@ -641,7 +641,12 @@ def CreateDownload(url):
           subprocess.run(cmd,capture_output=False,check=True)
         except subprocess.CalledProcessError:
           # Try one last time
-          subprocess.run(cmd,capture_output=False,check=True)
+          try:
+            subprocess.run(cmd,capture_output=False,check=True)
+          except subprocess.CalledProcessError:
+            if not args.no_delete:
+              subprocess.run(['rm','-rf',dir],capture_output=False,check=True)
+            return None
 
     return pgmdata
 
