@@ -239,7 +239,7 @@ def CreateDownload(url):
       closedCaptioning = jsondata['props']['initialState']['video']['current']['closedCaptioning']
       pgmdata['captions']['url'] = urllib.request.urlopen(closedCaptioning['srt']).geturl()
       pgmdata['captions']['filename'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',pgmdata['captions']['url'])[2]
-    except (KeyError, IndexError, TypeError) as e:
+    except (KeyError, IndexError, TypeError, AttributeError) as e:
       pgmdata['captions'] = None
   
     # Video asset URLs
