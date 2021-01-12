@@ -266,7 +266,7 @@ def CreateDownload(url):
       if pgmdata['datecode'] != chk_date[1]:
         #raise Exception('ERROR: Ambiguity in program date between [{}] and [{}].'.format(broadcastDateCT,pgmdata['guid']))
         ambiguity.extend([{'url':link['url'],'airdate':broadcastDateCT,'guid':pgmdata['guid'],'final_date':chk_date[1]}])
-        pgmdata['datecode'] = chk_date[1]
+        #pgmdata['datecode'] = chk_date[1] # Do not take the program date from the guid, lately it seems to be wrong pretty often
   
   #  print(json.dumps(jsondata,indent=2))
   
