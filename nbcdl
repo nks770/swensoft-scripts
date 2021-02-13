@@ -812,9 +812,17 @@ def verifyEncryptedFile(url,key1,fname,key2,**kwargs):
   openssl1 = ['openssl','aes-128-cbc','-d','-in','base.crypt','-out','base','-nosalt','-K',key2,'-iv',iv['base']]
   openssl2 = ['openssl','aes-128-cbc','-d','-in','comp.crypt','-out','comp','-nosalt','-K',key1,'-iv',iv['comp']]
   print('{}{}{}'.format(bcolors.OKBLUE,openssl1,bcolors.ENDC))
-  subprocess.run(openssl1,capture_output=False,check=True)
+  try:
+    subprocess.run(openssl1,capture_output=False,check=True)
+  except subprocess.CalledProcessError:
+    print("{}DECRYPTION FAILURE! {}{}".format(bcolors.FAIL,fname,bcolors.ENDC))
+    return [fname]
   print('{}{}{}'.format(bcolors.OKBLUE,openssl2,bcolors.ENDC))
-  subprocess.run(openssl2,capture_output=False,check=True)
+  try:
+    subprocess.run(openssl2,capture_output=False,check=True)
+  except subprocess.CalledProcessError:
+    print("{}DECRYPTION FAILURE! {}{}".format(bcolors.FAIL,fname,bcolors.ENDC))
+    return [fname]
   a = subprocess.run(['sha1sum','base'],capture_output=True,check=True).stdout.decode('utf-8').split()
   b = subprocess.run(['sha1sum','comp'],capture_output=True,check=True).stdout.decode('utf-8').split()
   c = subprocess.run(['sha1sum','test'],capture_output=True,check=True).stdout.decode('utf-8').split()
@@ -1072,8 +1080,13 @@ if args.search:
   
           with open('{}/url.txt'.format(pp),'r') as f:
             preexisting = f.read().splitlines()
-          preexisting_p = [parseUrl(j) for j in preexisting]
-          preexisting_ids = [j['id'] for j in preexisting_p]
+
+          preexisting_ids = []
+          for j in preexisting:
+            try:
+              preexisting_ids.extend([parseUrl(j)['id']])
+            except TypeError:
+              pass
           #print(json.dumps(preexisting_p,indent=2,default=str))
   
           to_add = []
