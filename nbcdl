@@ -451,7 +451,7 @@ def CreateDownload(url):
     except KeyError:
       pgmdata['data']['mp4']['width'] = None
       pgmdata['data']['mp4']['height'] = None
-  except (urllib.error.HTTPError, IndexError, TypeError) as e:
+  except (urllib.error.HTTPError, urllib.error.URLError, IndexError, TypeError) as e:
   #  print(xdata1[0]['src'])
     pgmdata['data']['mp4'] = None
   
@@ -475,7 +475,7 @@ def CreateDownload(url):
   try:
     if len(xdata2[0]['abstract']) > len(pgmdata['desc']):
       pgmdata['desc'] = xdata2[0]['abstract']
-  except (IndexError,TypeError) as e:
+  except (IndexError,TypeError,KeyError) as e:
     pass
   try:
     pgmdata['data']['m3u']['master'] = urllib.request.urlopen(xdata2[0]['src']).geturl()
@@ -533,7 +533,7 @@ def CreateDownload(url):
       tt['file'] = re.split(r'^([^\?]+)\/([^\?]+)(.*)$',tt['url'])[2]
       pgmdata['data']['m3u']['playlist'].extend([tt])
     
-  except (urllib.error.HTTPError,IndexError,TypeError) as e:
+  except (urllib.error.HTTPError,urllib.error.URLError,IndexError,TypeError) as e:
     pgmdata['data']['m3u'] = None
     
   #print(json.dumps(xdata4,indent=2))
