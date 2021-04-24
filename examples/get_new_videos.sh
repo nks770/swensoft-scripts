@@ -138,7 +138,7 @@ if [ -s ${failures} ] ; then
   else
     subject="[WARNING] Failures for ${w} directories"
   fi
-  echo "Some videso could not be downloaded, sending an email to ${email}..."
+  echo "Some videos could not be downloaded, sending an email to ${email}..."
   mail -r ${email_from} -s "${subject}" ${email} < ${emailbody}
 fi
 
