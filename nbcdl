@@ -444,10 +444,12 @@ def CreateDownload(url):
   #print(json.dumps(xdata1,indent=2))
   try:
     try:
-      pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
+      req = urllib.request.Request(xdata1[0]['src'], data=None, headers=headers)
+      pgmdata['data']['mp4']['url'] = urllib.request.urlopen(req).geturl()
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
       xdata1.pop(0)
-      pgmdata['data']['mp4']['url'] = urllib.request.urlopen(xdata1[0]['src']).geturl()
+      req = urllib.request.Request(xdata1[0]['src'], data=None, headers=headers)
+      pgmdata['data']['mp4']['url'] = urllib.request.urlopen(req).geturl()
     pgmdata['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',pgmdata['data']['mp4']['url'])[2]
     try:
       pgmdata['data']['mp4']['width'] = int(xdata1[0]['width'])
@@ -495,7 +497,8 @@ def CreateDownload(url):
     #print(json.dumps(xdata3,indent=2))
     try:
       pgmdata['data']['m3u']['index'] = xdata3[0]['url']
-      test_url = urllib.request.urlopen(xdata3[0]['url']).geturl()
+      req = urllib.request.Request(xdata3[0]['url'], data=None, headers=headers)
+      test_url = urllib.request.urlopen(req).geturl()
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
       xdata3.pop(0)
       pgmdata['data']['m3u']['index'] = xdata3[0]['url']
