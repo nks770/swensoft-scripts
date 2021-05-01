@@ -6,7 +6,7 @@ email_from=$(cat ~/.emailfrom)
 
 # Load environment modules
 export PATH=/usr/local/bin:${PATH}
-source /opt/Modules/4.1.3/init/sh
+source /etc/profile.d/modules.sh
 module load Python ffmpeg
 
 # Create temporary files

@@ -475,7 +475,7 @@ def CreateDownload(url):
     #print(vdata2.decode('utf-8'))
     xdata2 = [x.attrs for x in soup2.find_all('video')]
     xdata2.sort(key=lambda x: int(x['width']),reverse=True)
-  except TypeError:
+  except (TypeError, KeyError) as e:
     xdata2 = None
   #print(json.dumps(xdata2[0],indent=2))
   try:
