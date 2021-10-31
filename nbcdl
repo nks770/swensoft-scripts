@@ -983,6 +983,9 @@ if args.search:
           slideshow=p
         if p['component'] == 'LinksSelectableGroup':
           linkgroups.extend([p])
+        if p['component'] == 'Shelf':
+          shelves.extend([p])
+
       for l in linkgroups:
         for j in l['data']['items']:
           if j['component'] == 'Shelf':
