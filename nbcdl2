@@ -33,21 +33,21 @@ def quarter(mm):
 
 def parseUrl(raw_url):
   try:
-    ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',raw_url)
+    ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/\r\n]+)\/([^\/\r\n]+)\/(([^\/\r\n]+)-([^\/\r\n]+))$',raw_url)
     return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
             'server':ld[1],
             'name':ld[5],
             'id':ld[6]}
   except IndexError:
     try:
-      ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/((.+)-(.+))$',raw_url)
+      ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/\r\n]+)\/(([^\/\r\n]+)-([^\/\r\n]+))$',raw_url)
       return {'url':'https://{}/{}/{}'.format(ld[1],ld[2],ld[3]),
               'server':ld[1],
               'name':ld[4],
               'id':ld[5]}
     except IndexError:
       try:
-        ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',raw_url)
+        ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/\r\n]+)\/([^\/\r\n]+)\/(([^\/\r\n]+)\/([^\/\r\n]+))$',raw_url)
         return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
                 'server':ld[1],
                 'name':ld[5],
@@ -90,19 +90,41 @@ if args.nocolor:
 ### MAIN PROGRAM ###
 ####################
 
+# Get the raw list of input URLs from the command line and read any URL files provided.
 try:
-  url = []
+  url_list = []
   for u in args.url:
-    url.extend([u])
-  if len(url)==0:
-    url = None
+    if Path(u).is_file():
+      try:
+        with open(u) as f:
+          v = f.read().splitlines()
+        url_list.extend(v)
+      except UnicodeDecodeError:
+        url_list.extend([u])
+    else:
+      url_list.extend([u])
+  if len(url_list)==0:
+    url_list = None
 except IndexError:
-  url = None
+  url_list = None
 
-if url == None:
+# Parse the URLs and kick out any that could not be parsed.
+if url_list == None:
   parser.print_help()
 else:
-  print(url)
+  items = []
+  for url in url_list:
+    i = parseUrl(url)
+    if i != None:
+      items.extend([i])
+    else:
+      print("{}ERROR: No rules to interpret `{}`.{}".format(bcolors.FAIL,url,bcolors.ENDC))
+  if len(items)==0:
+    items = None
+
+# Debug output
+print(json.dumps(items,indent=2))
+ 
 
 retcd=0
 sys.exit(retcd)
