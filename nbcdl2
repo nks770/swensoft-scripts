@@ -1,0 +1,108 @@
+#!/bin/env python3
+
+import sys
+import argparse
+import copy
+import json
+import demjson
+import re
+import subprocess
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from time import sleep
+import urllib.request, urllib.parse
+from bs4 import BeautifulSoup
+
+firefox_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0'
+firefox_headers = {'User-Agent': firefox_agent}
+
+user_agent = 'Lavf/58.45.100'
+headers = {'User-Agent': user_agent}
+
+def quarter(mm):
+  if mm in ('01','02','03'):
+    return 'Q1'
+  elif mm in ('04','05','06'):
+    return 'Q2'
+  elif mm in ('07','08','09'):
+    return 'Q3'
+  elif mm in ('10','11','12'):
+    return 'Q4'
+  else:
+    return None
+
+def parseUrl(raw_url):
+  try:
+    ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/([^\/]+)\/((.+)-(.+))$',raw_url)
+    return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
+            'server':ld[1],
+            'name':ld[5],
+            'id':ld[6]}
+  except IndexError:
+    try:
+      ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbcnews)\.com)\/([^\/]+)\/((.+)-(.+))$',raw_url)
+      return {'url':'https://{}/{}/{}'.format(ld[1],ld[2],ld[3]),
+              'server':ld[1],
+              'name':ld[4],
+              'id':ld[5]}
+    except IndexError:
+      try:
+        ld = re.split(r'(?x)^(?:\#)?(?:http)?(?:s)?:?\/\/((?:www\.)?(?:nbc)\.com)\/([^\/]+)\/([^\/]+)\/((.+)\/(.+))$',raw_url)
+        return {'url':'https://{}/{}/{}/{}'.format(ld[1],ld[2],ld[3],ld[4]),
+                'server':ld[1],
+                'name':ld[5],
+                'id':ld[6]}
+      except IndexError:
+        return None
+
+
+# Parse arguments
+parser = argparse.ArgumentParser(description='Download/archive an NBC video stream.')
+parser.add_argument('url',metavar='url',nargs='*',default='',
+                    help='URL(s) of video to download.')
+parser.add_argument('-N','--nocolor', action='store_true', dest='nocolor',
+                    help='Do not use terminal colors.')
+args = parser.parse_args()
+
+# Define terminal colors
+class bcolors:
+  HEADER = '\033[95m'
+  OKBLUE = '\033[94m'
+  OKGREEN = '\033[92m'
+  WARNING = '\033[93m'
+  FAIL = '\033[91m'
+  ENDC = '\033[0m'
+  BOLD = '\033[1m'
+  UNDERLINE = '\033[4m'
+# Remove colors from terminal if option is selected
+if args.nocolor:
+  bcolors.HEADER = ''
+  bcolors.OKBLUE = ''
+  bcolors.OKGREEN = ''
+  bcolors.WARNING = ''
+  bcolors.FAIL = ''
+  bcolors.ENDC = ''
+  bcolors.BOLD = ''
+  bcolors.UNDERLINE = ''
+
+
+####################
+### MAIN PROGRAM ###
+####################
+
+try:
+  url = []
+  for u in args.url:
+    url.extend([u])
+  if len(url)==0:
+    url = None
+except IndexError:
+  url = None
+
+if url == None:
+  parser.print_help()
+else:
+  print(url)
+
+retcd=0
+sys.exit(retcd)
