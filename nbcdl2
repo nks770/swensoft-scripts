@@ -416,7 +416,11 @@ def initializeDownload(x):
 
 def getMP4Link(x):
   try:
-    url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(x['asset'])
+    if x['asset_ext'] == None:
+      url = '{}?format=SMIL&formats=MPEG4'.format(x['asset'])
+    else:
+      url = '{}?{}&format=SMIL&formats=MPEG4'.format(x['asset'],x['asset_ext'])
+    #print(url)
     req = urllib.request.Request(url, data=None, headers=headers)
     with urllib.request.urlopen(req) as response:
       mp4data = response.read()
@@ -424,7 +428,10 @@ def getMP4Link(x):
     #with open('mp4data.txt','wb') as f:
     #  f.write(mp4data)
     vdata = [v.attrs for v in mp4soup.find_all('video')]
-    vdata.sort(key=lambda y: int(y['system-bitrate']),reverse=True)
+    try:
+      vdata.sort(key=lambda y: int(y['system-bitrate']),reverse=True)
+    except KeyError:
+      vdata.sort(key=lambda y: int(y['width']),reverse=True)
     #print(json.dumps(vdata,indent=2))
     vurl = None
     vwidth = None
@@ -476,10 +483,10 @@ except IndexError:
   url_list = None
 
 # Parse the URLs and kick out any that could not be parsed.
+items = []
 if url_list == None:
   parser.print_help()
 else:
-  items = []
   for url in url_list:
     if url[0] != '#': # Ignore commented-out items
       i = parseUrl(url)
