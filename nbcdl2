@@ -2,7 +2,6 @@
 
 import sys
 import argparse
-#import copy
 import json
 import re
 import subprocess
@@ -12,10 +11,10 @@ from time import sleep
 import urllib.request, urllib.parse
 from bs4 import BeautifulSoup
 
-firefox_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0'
+firefox_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0'
 firefox_headers = {'User-Agent': firefox_agent}
 
-user_agent = 'Lavf/58.45.100'
+user_agent = 'Lavf/58.134.100'
 headers = {'User-Agent': user_agent}
 
 # Parse arguments
@@ -92,6 +91,8 @@ def initializeDownload(x):
     webpage = response.read()
     soup = BeautifulSoup(webpage,features='html.parser')
   print(soup.title.string)
+  #with open('file.txt'.format(dir),'wb') as f:
+  #  f.write(webpage)
 
   if 'nbcnews.com' in x['server']:
     # Get NEXT_DATA (JSON)
@@ -117,8 +118,54 @@ def initializeDownload(x):
     # Get PRELOAD (JSON)
     preload = json.loads(re.split(r'^PRELOAD\=(.+)$',soup.find('script',text=re.compile(r'^PRELOAD\=(.+)$')).string)[1])
     preload_pages=preload['pages'][list(preload['pages'].keys())[0]]
+    #with open('preload.txt'.format(dir),'w') as f:
+    #  f.write(json.dumps(preload,indent=2))
 
-    #print(preload_pages)
+    # Get LD+JSON (JSON)
+    ldjson = json.loads(soup.find('script',attrs={'type':re.compile('json')}).string)
+    #with open('ldjson.txt'.format(dir),'w') as f:
+    #  f.write(json.dumps(ldjson,indent=2))
+
+    # Get MPX (JSON)
+    mpx = re.split(r'(MPX:.+?}})',webpage.decode('utf-8'))[1]
+    quoted=False
+    quoted2=False
+    mpx2 = '{'
+    for i in range(len(mpx)):
+      if mpx[i] == '"':
+        quoted = not(quoted)
+      if quoted or mpx[i] == '"':
+        mpx2+=mpx[i]
+      else:
+        if not quoted2 and mpx[i] not in ':,{}':
+          mpx2+='"'+mpx[i]
+          quoted2=True
+        elif quoted2 and mpx[i] in ':,{}':
+          mpx2+='"'+mpx[i]
+          quoted2=False
+        elif quoted2 and mpx[i] not in ':,{}':
+          mpx2+=mpx[i]
+        elif not quoted2 and mpx[i] in ':,{}':
+          mpx2+=mpx[i]
+    mpx2 += '}'
+    mpxjson = json.loads(mpx2)['MPX']
+    #with open('mpxjson.txt'.format(dir),'w') as f:
+    #  f.write(json.dumps(mpxjson,indent=2))
+          
+    # Broadcast date
+    try:
+      dateBroadcast = preload_pages['metadata']['airDate']
+    except KeyError:
+      dateBroadcast = ldjson['video']['uploadDate']
+
+    # This converts the UTC to Central Time in a rudimentary way
+    # It would be better to use pyzt, but this calculation doesnt need to be
+    # really precise.  I am OK with it being off by an hour or two.
+    broadcastDate = datetime.strptime(dateBroadcast, '%Y-%m-%dT%H:%M:%S.%fZ')
+    broadcastDateCT = broadcastDate.replace(tzinfo=timezone(timedelta(seconds=-21600), 'CT')) - timedelta(seconds=21600)
+
+    # Determine the date code for the program
+    x['datecode'] = broadcastDateCT.strftime('%y%m%d')
 
 ####################
 ### MAIN PROGRAM ###
