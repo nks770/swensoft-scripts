@@ -83,6 +83,46 @@ def parseUrl(raw_url):
         return None
 
 
+def import_m3u(m3ufile):
+  m3uout = []
+  item = {}
+  for line in m3ufile.decode('utf-8').split('\n'):
+    p1 = re.split(r'^#(.+):(.+)$',line)
+    p2 = re.split(r'^#(.+):([\d\.]+),*$',line)
+    p3 = re.split(r'^#(.+):(\d+),*$',line)
+    p4 = re.split(r'^\#EXT-X-KEY:([^\=]+)=([^\,]+),([^\=]+)=\"?([^\"]+)\"?',line)
+    if line in ('#EXTM3U' '#EXT-X-ENDLIST') or line.strip() == "":
+      continue
+    elif line[:10] == "#EXT-X-KEY":
+      item = {'EXT-X-KEY':{p4[1]:p4[2],p4[3]:p4[4]}}
+    elif len(p3)==4:
+      try:
+        item[p3[1]] = int(p3[2])
+      except:
+        item[p3[1]] = p3[2]
+    elif len(p2)==4:
+      try:
+        item[p2[1]] = float(p2[2])
+      except:
+        item[p2[1]] = p2[2]
+    elif len(p1)==4:
+      ext3d = {}
+      for p in re.findall(r'([^#:\,]+)=([^"\,]+|"[^"]*")',p1[2]):
+        try:
+          ext3d[p[0]]=int(p[1])
+        except:
+          ext3d[p[0]]=p[1]
+      if len(ext3d)>0:
+        item[p1[1]] = ext3d
+      else:
+        item[p1[1]] = p1[2]
+    else:
+      item['url']=line
+      m3uout.extend([item])
+      item = {}
+  return m3uout
+
+
 def initializeDownload(x):
 
   # Download webpage
@@ -157,6 +197,11 @@ def initializeDownload(x):
       x['guid'] = jsondata['props']['initialState']['video']['current']['mpxMetadata']['guid']
     except TypeError:
       x['guid'] = x['id']
+
+    ###############
+    # mpxAdPolicy #
+    ###############
+    x['mpxAdPolicy'] = None
 
     ###############
     # Video Title #
@@ -324,6 +369,16 @@ def initializeDownload(x):
     ########
     x['guid'] = x['id']
 
+
+    ###############
+    # mpxAdPolicy #
+    ###############
+    try:
+      x['mpxAdPolicy'] = preload_pages['metadata']['mpxAdPolicy']
+    except KeyError:
+      x['mpxAdPolicy'] = None
+
+
     ###############
     # Video Title #
     ###############
@@ -460,6 +515,69 @@ def getMP4Link(x):
     x['data']['mp4'] = None
 
 
+#####################
+### GET M3U LINKS ###
+#####################
+
+def getM3ULink(x):
+  try:
+    if x['asset_ext'] == None:
+      url = '{}?format=SMIL&manifest=m3u'.format(x['asset'])
+      #url = '{}?format=SMIL&manifest=m3u&switch=HLSServiceSecure'.format(x['asset'])
+      #url = '{}?mode=on-demand&policy={}&manifest=m3u&format=SMIL'.format(x['asset'],x['mpxAdPolicy'])
+    else:
+      url = '{}?{}&format=SMIL&manifest=m3u'.format(x['asset'],x['asset_ext'])
+      #url = '{}?{}&format=SMIL&manifest=m3u&switch=HLSServiceSecure'.format(x['asset'],x['asset_ext'])
+      #url = '{}?{}&mode=on-demand&policy={}&manifest=m3u&format=SMIL'.format(x['asset'],x['asset_ext'],x['mpxAdPolicy'])
+    print(url)
+    req = urllib.request.Request(url, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      m3udata = response.read()
+      m3usoup = BeautifulSoup(m3udata,features='html.parser')
+    #with open('m3udata.txt','wb') as f:
+    #  f.write(m3udata)
+    vdata = [v.attrs for v in m3usoup.find_all('video')]
+    try:
+      vdata.sort(key=lambda y: int(y['system-bitrate']),reverse=True)
+    except KeyError:
+      vdata.sort(key=lambda y: int(y['width']),reverse=True)
+    #print(json.dumps(vdata,indent=2))
+    master_url = None
+#    vwidth = None
+#    vheight = None
+    for v in vdata:
+      try:
+        # Identify URL for master playlist
+        #print('Trying {}'.format(v['src']))
+        req = urllib.request.Request(v['src'], data=None, headers=headers)
+        master_url = urllib.request.urlopen(req).geturl()
+        #print('SUCCESS: {}'.format(master_url))
+
+        # Download master.m3u8
+        req = urllib.request.Request(master_url, data=None, headers=headers)
+        with urllib.request.urlopen(req) as response:
+          master_m3u8 = response.read()
+        with open('master_m3u8.txt','wb') as f:
+          f.write(master_m3u8)
+        master_json = import_m3u(master_m3u8)
+        #print(json.dumps(master_json,indent=2))
+        with open('master_m3u8.json','w') as f:
+          json.dump(master_json,f,indent=2)
+
+        break # If successful, then stop searching for the videos
+      except urllib.error.HTTPError:
+        print('FAILED!')
+        pass # Move on to the next highest-bitrate video
+#    x['data']['mp4'] = {}
+#    x['data']['mp4']['url'] = vurl
+#    x['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',vurl)[2]
+#    x['data']['mp4']['width'] = vwidth
+#    x['data']['mp4']['height'] = vheight
+  except TypeError:
+    x['data']['m3u'] = None
+
+
+
 ####################
 ### MAIN PROGRAM ###
 ####################
@@ -499,7 +617,8 @@ else:
 for item in items:
   print("{}Downloading `{}`...{}".format(bcolors.OKBLUE,item['url'],bcolors.ENDC))
   initializeDownload(item)
-  getMP4Link(item)
+  #getMP4Link(item)
+  getM3ULink(item)
 
 # Debug output
 print(json.dumps(items,indent=2))
