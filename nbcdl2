@@ -397,6 +397,9 @@ def initializeDownload(x):
     except (KeyError, IndexError, TypeError, AttributeError) as e:
       x['captions'] = None
 
+  # Initialize an empty data list
+  x['data'] = {'mp4':None,'m3u':None}
+
   ############
   ## Status ##
   ############
@@ -406,6 +409,48 @@ def initializeDownload(x):
     x['status'] = 'INITIALIZE_FAIL'
 
 
+
+#####################
+### GET MP4 LINKS ###
+#####################
+
+def getMP4Link(x):
+  try:
+    url = '{}?mbr=true&player=%5Bv2%5D%20OneApp%20-%20PDK6%20NBC.com&format=SMIL&formats=MPEG4'.format(x['asset'])
+    req = urllib.request.Request(url, data=None, headers=headers)
+    with urllib.request.urlopen(req) as response:
+      mp4data = response.read()
+      mp4soup = BeautifulSoup(mp4data,features='html.parser')
+    #with open('mp4data.txt','wb') as f:
+    #  f.write(mp4data)
+    vdata = [v.attrs for v in mp4soup.find_all('video')]
+    vdata.sort(key=lambda y: int(y['system-bitrate']),reverse=True)
+    #print(json.dumps(vdata,indent=2))
+    vurl = None
+    vwidth = None
+    vheight = None
+    for v in vdata:
+      try:
+        #print('Trying {}'.format(v['src']))
+        req = urllib.request.Request(v['src'], data=None, headers=headers)
+        vurl = urllib.request.urlopen(req).geturl()
+        try:
+          vwidth = int(v['width'])
+          vheight = int(v['height'])
+        except KeyError:
+          pass
+        #print('SUCCESS: {}'.format(vurl))
+        break # If successful, then stop searching for the videos
+      except urllib.error.HTTPError:
+        #print('FAILED!')
+        pass # Move on to the next highest-bitrate video
+    x['data']['mp4'] = {}
+    x['data']['mp4']['url'] = vurl
+    x['data']['mp4']['filename'] = re.split(r'^(.+)\/([^\/]+.mp4)(.*)$',vurl)[2]
+    x['data']['mp4']['width'] = vwidth
+    x['data']['mp4']['height'] = vheight
+  except TypeError:
+    x['data']['mp4'] = None
 
 
 ####################
@@ -436,16 +481,18 @@ if url_list == None:
 else:
   items = []
   for url in url_list:
-    i = parseUrl(url)
-    if i != None:
-      items.extend([i])
-    else:
-      print("{}ERROR: No rules to interpret `{}`.{}".format(bcolors.FAIL,url,bcolors.ENDC))
+    if url[0] != '#': # Ignore commented-out items
+      i = parseUrl(url)
+      if i != None:
+        items.extend([i])
+      else:
+        print("{}ERROR: No rules to interpret `{}`.{}".format(bcolors.FAIL,url,bcolors.ENDC))
 
 # Download the URLs
 for item in items:
   print("{}Downloading `{}`...{}".format(bcolors.OKBLUE,item['url'],bcolors.ENDC))
   initializeDownload(item)
+  getMP4Link(item)
 
 # Debug output
 print(json.dumps(items,indent=2))
