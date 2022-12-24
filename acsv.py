@@ -6,6 +6,7 @@ import re
 import subprocess
 import json
 import datetime
+import time
 from pathlib import Path
 
 # Parse arguments
@@ -35,10 +36,12 @@ parser.add_argument('-A','--autoupdate-all', action='store_true', dest='autoupda
                     help='Autoupdate for all situations.')
 parser.add_argument('-U','--update-all', action='store_true', dest='update_all',
                     help='Prompt/update for checksum files.')
+parser.add_argument('-R','--refresh-all', action='store_true', dest='refresh_all',
+                    help='Autoupdate renames and additions, but prompt for missing or changed files.')
 parser.add_argument('-P','--prompt-all', action='store_true', dest='prompt_all',
                     help='Basically prompt for any situation.')
 parser.add_argument('-V','--verify-all', action='store_true', dest='verify_all',
-                    help='Basically prompt for any situation.')
+                    help='Verify hashes and show problems, but do not modify any checksum files.')
 parser.add_argument('-s','--safe-mode', action='store_true', dest='safe_mode',
                     help='Enable safe mode (do not make any changes to disk).')
 #parser.add_argument('-N','--nocolor', action='store_true', dest='nocolor',
@@ -64,6 +67,13 @@ if args.verify_all:
              'new': 'show',
              'deletes': 'show',
              'updates': 'show' }
+
+if args.refresh_all:
+    mode = { 'renames': 'autoupdate',
+             'missing': 'create',
+             'new': 'autoupdate',
+             'deletes': 'prompt',
+             'updates': 'prompt' }
 
 if args.update_all:
     mode = { 'renames': 'prompt',
@@ -111,6 +121,9 @@ def md5_to_dict(raw):
 if len(args.directories)==0:
     parser.print_help()
 
+start_time = time.time()
+count = {'files':0,'directories':0,'bytes':0}
+
 for cdir in args.directories:
     for p in Path(cdir).rglob("."):
 
@@ -148,6 +161,10 @@ for cdir in args.directories:
             
             cmd = ['md5sum','--']
             cmd.extend(ff)
+            count['directories'] = count['directories'] + 1
+            count['files'] = count['files'] + len(ff)
+            fz = [(p / x).stat().st_size for x in ff]
+            count['bytes'] = count['bytes'] + sum(fz)
             rawmd5 = subprocess.run(cmd,capture_output=True,check=True,cwd=p).stdout
             hashdata = md5_to_dict(rawmd5)
             #print(json.dumps(md5_to_dict(hashdata.stdout),indent=2))
@@ -257,7 +274,23 @@ for cdir in args.directories:
                         with open(p / '{}.md5'.format(p.name),'wb') as h:
                             h.write(rawmd5)
 
+end_time = time.time()
+exec_time = end_time - start_time
+speed = count['bytes'] / exec_time
+sizestring = '{} bytes'.format(count['bytes'])
+ratestring = '{:.3f} bytes/sec'.format(speed)
+if count['bytes'] > 1024:
+    sizestring = '{:.3f} KiB'.format(count['bytes'] / 1024)
+    ratestring = '{:.3f} KiB/sec'.format(speed / 1024)
+if count['bytes'] > (1024 * 1024):
+    sizestring = '{:.3f} MiB'.format(count['bytes'] / 1024 / 1024)
+    ratestring = '{:.3f} MiB/sec ({:.3f} GiB/min; {:.3f} TiB/hr)'.format(speed / 1024 / 1024,
+                                                                         speed / 1024 / 1024 / 1024 * 60,
+                                                                         speed / 1024 / 1024 / 1024 / 1024 * 60 * 60)
+if count['bytes'] > (1024 * 1024 * 1024):
+    sizestring = '{:.3f} GiB'.format(count['bytes'] / 1024 / 1024 / 1024)
+if count['bytes'] > (1024 * 1024 * 1024 * 1024):
+    sizestring = '{:.3f} TiB'.format(count['bytes'] / 1024 / 1024 / 1024 / 1024)
 
-
-
-
+print('Processed {} in {:,} files and {:,} directories in {}'.format(sizestring,count['files'], count['directories'],str(datetime.timedelta(seconds=exec_time))))
+print('Average rate of {}'.format(ratestring))
