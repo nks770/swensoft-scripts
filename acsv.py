@@ -122,7 +122,7 @@ if len(args.directories)==0:
     parser.print_help()
 
 start_time = time.time()
-count = {'files':0,'directories':0,'bytes':0}
+count = {'files':0,'directories':0,'bytes':0,'waittime':0}
 
 for cdir in args.directories:
     for p in Path(cdir).rglob("."):
@@ -251,7 +251,10 @@ for cdir in args.directories:
             if prompt:
                 if nohashfile:
                     while f not in ('y','n'):
+                        input_start = time.time()
                         f = input("  Create this checksum file? (y/n)=")
+                        input_end = time.time()
+                        count['waittime'] = count['waittime'] + (input_end - input_start)
                 else:
                     try:
                         mtime = datetime.datetime.fromtimestamp(Path(p / '{}.md5'.format(p.name)).stat().st_mtime) #, tz=timezone.utc)
@@ -259,7 +262,10 @@ for cdir in args.directories:
                     except FileNotFoundError:
                         pass
                     while f not in ('y','n'):
+                        input_start = time.time()
                         f = input("  Update this checksum file? (y/n)=")
+                        input_end = time.time()
+                        count['waittime'] = count['waittime'] + (input_end - input_start)
             if update or nohashfile:
                 if f != 'n':
                     if nohashfile:
@@ -275,7 +281,7 @@ for cdir in args.directories:
                             h.write(rawmd5)
 
 end_time = time.time()
-exec_time = end_time - start_time
+exec_time = end_time - start_time - count['waittime']
 speed = count['bytes'] / exec_time
 sizestring = '{} bytes'.format(count['bytes'])
 ratestring = '{:.3f} bytes/sec'.format(speed)
@@ -294,3 +300,5 @@ if count['bytes'] > (1024 * 1024 * 1024 * 1024):
 
 print('Processed {} in {:,} files and {:,} directories in {}'.format(sizestring,count['files'], count['directories'],str(datetime.timedelta(seconds=exec_time))))
 print('Average rate of {}'.format(ratestring))
+if count['waittime'] > 0.0:
+    print('Spent {} waiting for user input'.format(str(datetime.timedelta(seconds=count['waittime']))))
