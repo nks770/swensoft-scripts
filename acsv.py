@@ -233,7 +233,7 @@ for cdir in args.directories:
 
             if len(updated_files)>0:
                 if mode['updates'] != 'ignore':
-                    print(f'  {bcolors.WARNING}UPDATED FILES{bcolors.ENDC}')
+                    print('  {}UPDATED FILES ({:,}){}'.format(bcolors.WARNING,len(updated_files),bcolors.ENDC))
                     for k in updated_files.keys():
                         print('  {}{} -> {} {}{}'.format(bcolors.WARNING,ckdata[k],hashdata[k],k,bcolors.ENDC))
                 if mode['updates'] in ('autoupdate','prompt'):
@@ -245,7 +245,7 @@ for cdir in args.directories:
 
             if len(renames)>0:
                 if mode['renames'] != 'ignore':
-                    print(f'  {bcolors.TEAL}RENAMED FILES{bcolors.ENDC}')
+                    print('  {}RENAMED FILES ({:,}){}'.format(bcolors.TEAL,len(renames),bcolors.ENDC))
                     for k in renames.keys():
                         print('  {}{} "{}" -> "{}"{}'.format(bcolors.TEAL,ckdata[k],k,renames[k],bcolors.ENDC))
                 if mode['renames'] in ('autoupdate','prompt'):
@@ -261,7 +261,7 @@ for cdir in args.directories:
                         prompt = True
                 else:
                     if mode['new'] != 'ignore':
-                        print(f'  {bcolors.OKGREEN}NEW FILES{bcolors.ENDC}')
+                        print('  {}NEW FILES ({:,}){}'.format(bcolors.OKGREEN,len(added_files),bcolors.ENDC))
                         for k in added_files.keys():
                             print('  {}{} {}{}'.format(bcolors.OKGREEN,added_files[k],k,bcolors.ENDC))
                     if mode['new'] in ('autoupdate','prompt'):
@@ -273,7 +273,7 @@ for cdir in args.directories:
 
             if len(missing_files)>0:
                 if mode['deletes'] != 'ignore':
-                    print(f'  {bcolors.FAIL}MISSING FILES{bcolors.ENDC}')
+                    print('  {}MISSING FILES ({:,}){}'.format(bcolors.FAIL,len(missing_files),bcolors.ENDC))
                     for k in missing_files.keys():
                         print('  {}{} {}{}'.format(bcolors.FAIL,missing_files[k],k,bcolors.ENDC))
                 if mode['deletes'] in ('autoupdate','prompt'):
