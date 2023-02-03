@@ -13,11 +13,25 @@ from pathlib import Path
 # Parse arguments
 
 behaviors = ['ignore','show','autoupdate','prompt','fail']
-behaviors2 = ['skip','show','create','prompt''fail']
+behaviors2 = ['skip','show','create','prompt','fail']
+
+# Define hash engines
+engine = {}
+engine['md5'] = ['md5sum','--']
+engine['sha1'] = ['sha1sum','--']
+engine['sha224'] = ['sha224sum','--']
+engine['sha256'] = ['sha256sum','--']
+engine['sha384'] = ['sha384sum','--']
+engine['sha512'] = ['sha512sum','--']
+engine['b2'] = ['b2sum','--']
+#print(json.dumps(engine,indent=2))
 
 parser = argparse.ArgumentParser(description='Advanced Checksum Verifier')
 parser.add_argument('directories',metavar='directories',nargs='*',default='',
                     help='Directories to process.')
+parser.add_argument('-e','--hash', metavar='ALGORITHM', dest='algorithm',
+                    default='md5',choices=engine.keys(),
+                    help='Hash algorithm to use.')
 parser.add_argument('-r','--renames', metavar='BEHAVIOR', dest='renames',
                     default='show',choices=behaviors,
                     help='What to do if we encounter renamed files.')
@@ -139,16 +153,17 @@ class bcolors:
     TEAL = '\033[96m'
 
 
-# Convert md5sum output to a dict
-def md5_to_dict(raw):
+# Convert hash output to a dict
+def hash_to_dict(raw):
     txt = raw.decode('utf-8').split('\n')
     dd = {}
     for t in txt:
         try:
-            tt = re.split(r'^([\da-fA-F]{32})\s+(.+)$',t)
+            tt = re.split(r'^([\da-fA-F]+)\s+(.+)$',t)
             dd[tt[2]] = tt[1]
         except IndexError:
             pass
+    #print(json.dumps(dd,indent=2))
     return dd
 
 
@@ -162,7 +177,8 @@ count = {'files':0,'directories':0,'bytes':0,'waittime':0}
 for cdir in args.directories:
     for p in Path(cdir).rglob("."):
 
-        ckfiles = ['{}.md5'.format(p.name),'.md5']
+        ckfiles = ['{}.{}'.format(p.name,x) for x in engine.keys()]
+        ckfiles.extend(['.{}'.format(x) for x in engine.keys()])
 
         ff = [str(f.name) for f in p.glob('*') if f.is_file() and not f.is_symlink() and f.name not in ckfiles]
         ff.sort()
@@ -170,12 +186,11 @@ for cdir in args.directories:
             print('{}[EMPTY ] {}{}'.format(bcolors.OKBLUE,p.resolve(),bcolors.ENDC))
         elif len(ff)>0:
 
-            if Path(p / '{}.md5'.format(p.name)).is_file():
+            if Path(p / '{}.{}'.format(p.name,args.algorithm)).is_file():
                 nohashfile = False
                 print('{}[VERIFY] {}{}'.format(bcolors.OKBLUE,p.resolve(),bcolors.ENDC))
-                with open(Path(p / '{}.md5'.format(p.name)),'rb') as ckfile:
-                    ckdata = md5_to_dict(ckfile.read())
-                #print(json.dumps(md5_to_dict(ckdata),indent=2))
+                with open(Path(p / '{}.{}'.format(p.name,args.algorithm)),'rb') as ckfile:
+                    ckdata = hash_to_dict(ckfile.read())
             else:
                 nohashfile = True
                 if mode['missing'] in ('prompt','fail'):
@@ -194,9 +209,9 @@ for cdir in args.directories:
                     print('{}[CREATE] {}{}'.format(bcolors.OKBLUE,p.resolve(),bcolors.ENDC))
                 ckdata = {}
             
-            cmd = ['md5sum','--']
+            cmd = engine[args.algorithm].copy()
             cmd.extend(ff)
-            rawmd5 = subprocess.run(cmd,capture_output=True,check=True,cwd=p).stdout
+            rawout = subprocess.run(cmd,capture_output=True,check=True,cwd=p).stdout
 
             end_time = time.time()
             count['directories'] = count['directories'] + 1
@@ -204,7 +219,7 @@ for cdir in args.directories:
             fz = [(p / x).stat().st_size for x in ff]
             count['bytes'] = count['bytes'] + sum(fz)
 
-            hashdata = md5_to_dict(rawmd5)
+            hashdata = hash_to_dict(rawout)
 
             hash_matches = {k: ckdata[k] for k in ckdata if k in hashdata and ckdata[k] == hashdata[k]}
             updated_files = {k: hashdata[k] for k in hashdata if k in ckdata and ckdata[k] != hashdata[k]}
@@ -294,7 +309,7 @@ for cdir in args.directories:
                         count['waittime'] = count['waittime'] + (input_end - input_start)
                 else:
                     try:
-                        mtime = datetime.datetime.fromtimestamp(Path(p / '{}.md5'.format(p.name)).stat().st_mtime) #, tz=timezone.utc)
+                        mtime = datetime.datetime.fromtimestamp(Path(p / '{}.{}'.format(p.name,args.algorithm)).stat().st_mtime) #, tz=timezone.utc)
                         print('  Last Updated: {}'.format(mtime.strftime('%m/%d/%Y %H:%M:%S')))
                     except FileNotFoundError:
                         pass
@@ -307,15 +322,15 @@ for cdir in args.directories:
                 if f != 'n':
                     if nohashfile:
                         if mode['missing'] == 'prompt':
-                            print('  Creating checksum file {}.md5...'.format(p.name))
+                            print('  Creating checksum file {}.{}...'.format(p.name,args.algorithm))
                     else:
-                        print('  Updating checksum file {}.md5...'.format(p.name))
+                        print('  Updating checksum file {}.{}...'.format(p.name,args.algorithm))
                     # Write out updated checksum file
                     if args.safe_mode:
-                        print('{}Safe mode prevented write to file {}{}'.format(bcolors.WARNING,p / '{}.md5'.format(p.name),bcolors.ENDC))
+                        print('{}Safe mode prevented write to file {}{}'.format(bcolors.WARNING,p / '{}.{}'.format(p.name,args.algorithm),bcolors.ENDC))
                     else:
-                        with open(p / '{}.md5'.format(p.name),'wb') as h:
-                            h.write(rawmd5)
+                        with open(p / '{}.{}'.format(p.name,args.algorithm),'wb') as h:
+                            h.write(rawout)
 
 end_time = time.time()
 print_stats()
