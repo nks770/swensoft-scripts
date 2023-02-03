@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+import signal
 import sys
 import argparse
 import re
@@ -91,6 +92,39 @@ if args.prompt_all:
 
 print(json.dumps(mode,indent=2))
 
+# Gracefully handle KeyboardInterrupt
+def signal_handler(signal, frame):
+    print('Job cancelling due to keyboard interrupt...')
+    print_stats()
+    sys.exit(0)
+signal.signal(signal.SIGINT, signal_handler)
+
+
+def print_stats():
+    exec_time = end_time - start_time - count['waittime']
+    try:
+        speed = count['bytes'] / exec_time
+    except ZeroDivisionError:
+        speed = 0.0
+    sizestring = '{} bytes'.format(count['bytes'])
+    ratestring = '{:.3f} bytes/sec'.format(speed)
+    if count['bytes'] > 1024:
+        sizestring = '{:.3f} KiB'.format(count['bytes'] / 1024)
+        ratestring = '{:.3f} KiB/sec'.format(speed / 1024)
+    if count['bytes'] > (1024 * 1024):
+        sizestring = '{:.3f} MiB'.format(count['bytes'] / 1024 / 1024)
+        ratestring = '{:.3f} MiB/sec ({:.3f} GiB/min; {:.3f} TiB/hr)'.format(speed / 1024 / 1024,
+                                                                             speed / 1024 / 1024 / 1024 * 60,
+                                                                             speed / 1024 / 1024 / 1024 / 1024 * 60 * 60)
+    if count['bytes'] > (1024 * 1024 * 1024):
+        sizestring = '{:.3f} GiB'.format(count['bytes'] / 1024 / 1024 / 1024)
+    if count['bytes'] > (1024 * 1024 * 1024 * 1024):
+        sizestring = '{:.3f} TiB'.format(count['bytes'] / 1024 / 1024 / 1024 / 1024)
+    print('Processed {} in {:,} files and {:,} directories in {}'.format(sizestring,count['files'], count['directories'],str(datetime.timedelta(seconds=exec_time))))
+    print('Average rate of {}'.format(ratestring))
+    if count['waittime'] > 0.0:
+        print('Spent {} waiting for user input'.format(str(datetime.timedelta(seconds=count['waittime']))))
+
 # Define terminal colors
 class bcolors:
     HEADER = '\033[95m'
@@ -122,6 +156,7 @@ if len(args.directories)==0:
     parser.print_help()
 
 start_time = time.time()
+end_time = start_time
 count = {'files':0,'directories':0,'bytes':0,'waittime':0}
 
 for cdir in args.directories:
@@ -161,13 +196,15 @@ for cdir in args.directories:
             
             cmd = ['md5sum','--']
             cmd.extend(ff)
+            rawmd5 = subprocess.run(cmd,capture_output=True,check=True,cwd=p).stdout
+
+            end_time = time.time()
             count['directories'] = count['directories'] + 1
             count['files'] = count['files'] + len(ff)
             fz = [(p / x).stat().st_size for x in ff]
             count['bytes'] = count['bytes'] + sum(fz)
-            rawmd5 = subprocess.run(cmd,capture_output=True,check=True,cwd=p).stdout
+
             hashdata = md5_to_dict(rawmd5)
-            #print(json.dumps(md5_to_dict(hashdata.stdout),indent=2))
 
             hash_matches = {k: ckdata[k] for k in ckdata if k in hashdata and ckdata[k] == hashdata[k]}
             updated_files = {k: hashdata[k] for k in hashdata if k in ckdata and ckdata[k] != hashdata[k]}
@@ -281,24 +318,4 @@ for cdir in args.directories:
                             h.write(rawmd5)
 
 end_time = time.time()
-exec_time = end_time - start_time - count['waittime']
-speed = count['bytes'] / exec_time
-sizestring = '{} bytes'.format(count['bytes'])
-ratestring = '{:.3f} bytes/sec'.format(speed)
-if count['bytes'] > 1024:
-    sizestring = '{:.3f} KiB'.format(count['bytes'] / 1024)
-    ratestring = '{:.3f} KiB/sec'.format(speed / 1024)
-if count['bytes'] > (1024 * 1024):
-    sizestring = '{:.3f} MiB'.format(count['bytes'] / 1024 / 1024)
-    ratestring = '{:.3f} MiB/sec ({:.3f} GiB/min; {:.3f} TiB/hr)'.format(speed / 1024 / 1024,
-                                                                         speed / 1024 / 1024 / 1024 * 60,
-                                                                         speed / 1024 / 1024 / 1024 / 1024 * 60 * 60)
-if count['bytes'] > (1024 * 1024 * 1024):
-    sizestring = '{:.3f} GiB'.format(count['bytes'] / 1024 / 1024 / 1024)
-if count['bytes'] > (1024 * 1024 * 1024 * 1024):
-    sizestring = '{:.3f} TiB'.format(count['bytes'] / 1024 / 1024 / 1024 / 1024)
-
-print('Processed {} in {:,} files and {:,} directories in {}'.format(sizestring,count['files'], count['directories'],str(datetime.timedelta(seconds=exec_time))))
-print('Average rate of {}'.format(ratestring))
-if count['waittime'] > 0.0:
-    print('Spent {} waiting for user input'.format(str(datetime.timedelta(seconds=count['waittime']))))
+print_stats()
